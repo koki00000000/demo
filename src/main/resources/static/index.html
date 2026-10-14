@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI予定秘書</title>
+  <style>
+    :root { color:#1c2434; background:#f6f8fc; font-family:system-ui, sans-serif; }
+    body { max-width:760px; margin:28px auto; padding:0 20px; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    h1 { margin:0 0 4px; } .hint,.small { color:#687386; } .hint { margin-top:0; }
+    section { background:#fff; border-radius:14px; padding:22px; margin:18px 0; box-shadow:0 2px 10px #20304012; }
+    input, textarea { box-sizing:border-box; padding:10px; margin:5px 0; border:1px solid #ccd3df; border-radius:8px; font:inherit; }
+    input[type=text], textarea { width:100%; } input[type=datetime-local] { width:68%; } input[type=number] { width:28%; }
+    textarea { min-height:150px; resize:vertical; line-height:1.6; }
+    button { padding:10px 14px; border:0; border-radius:8px; background:#2764d9; color:#fff; cursor:pointer; font-weight:700; font-size:15px; }
+    button.secondary { background:#e8eefb; color:#2454aa; } button.close { background:transparent; color:#687386; font-size:22px; padding:0 8px; }
+    li { margin:10px 0; } .notification { border-left:4px solid #7a55e8; padding:10px 14px; background:#f7f3ff; margin:10px 0; border-radius:6px; white-space:pre-wrap; }
+    .modal { display:none; position:fixed; inset:0; z-index:10; background:#1c243466; padding:24px; overflow:auto; }
+    .modal.open { display:block; } .modal-card { max-width:680px; margin:42px auto; background:#fff; border-radius:18px; padding:28px; box-shadow:0 12px 40px #0004; }
+    .modal-head { display:flex; justify-content:space-between; align-items:start; gap:16px; } .modal-head h2 { margin:0; }
+    .guide { background:#f3f7ff; border-left:4px solid #4f7dd9; padding:14px; border-radius:7px; line-height:1.7; }
+    #proposalResult { display:none; white-space:pre-wrap; background:#f7f3ff; border-left:4px solid #7a55e8; padding:16px; border-radius:7px; line-height:1.7; margin-top:16px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>AI予定秘書</h1><p class="hint">予定の少し前に、AIが準備を手伝う通知を作ります。</p></div>
+    <button onclick="openGoalModal()">＋ 目標を作る</button>
+  </header>
+
+  <section>
+    <h2>進行中の目標</h2>
+    <div id="goals"><p class="small">目標はまだありません。</p></div>
+  </section>
+
+  <section>
+    <h2>今日のTodo</h2>
+    <p class="small">目標の「今日のTodoを作る」から、AIに小さな行動を作ってもらえます。</p>
+    <div id="todos"><p class="small">今日のTodoはまだありません。</p></div>
+  </section>
+
+  <section>
+    <h2>予定を追加</h2>
+    <input id="title" type="text" placeholder="例：Java Silverの勉強">
+    <input id="dateTime" type="datetime-local">
+    <input id="minutes" type="number" min="1" value="30"> 分前に通知
+    <button onclick="addSchedule()">追加</button>
+  </section>
+  <section><h2>予定</h2><ul id="schedules"></ul></section>
+  <section>
+    <h2>AI通知</h2>
+    <p class="small">通常は1分ごとに自動確認します。テスト用に今すぐ確認することもできます。</p>
+    <button onclick="checkNow()">今すぐ確認</button>
+    <div id="notifications"></div>
+  </section>
+
+  <div class="modal" id="goalModal" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head"><div><h2>目標を入力してみよう！</h2><p class="hint">やってみたいことを、気軽に書いてください。</p></div><button class="close" onclick="closeGoalModal()" aria-label="閉じる">×</button></div>
+      <div class="guide">まだ具体的でなくても大丈夫です。<br>自分のやりたいことを素直に、箇条書きでも文章でも自由に書いてください。AIが最初の計画を一緒に考えます。</div>
+      <h3>ここにタイトルを追加</h3>
+      <input id="goalTitle" type="text" placeholder="例：Java Silverに合格する">
+      <h3>ここに要望を追加</h3>
+      <textarea id="goalRequirements" placeholder="・10月までに合格したい&#10;・平日は1時間くらいなら勉強できる&#10;・無理な計画にはしたくない"></textarea>
+      <button id="planButton" onclick="askGoalPlan()">AIに計画を相談する</button>
+      <div id="proposalResult"></div>
+      <button id="startGoalButton" onclick="startGoal()" style="display:none; margin-top:16px;">この計画で始める</button>
+    </div>
+  </div>
+
+  <script>
+    const format = v => new Date(v).toLocaleString('ja-JP', { dateStyle:'short', timeStyle:'short' });
+    let lastGoalPlan = '';
+    async function load() {
+      const goals = await (await fetch('/api/goals')).json();
+      document.querySelector('#goals').innerHTML = goals.map(g =>
+        `<div class="notification">
+  <b>${g.title}</b><br>
+  <span class="small">AIと作った計画</span><br>
+  ${g.plan}<br>
+
+  <button onclick="generateTodos(${g.id}, this)" style="margin-top:12px">
+    今日のTodoを作る
+  </button>
+
+  <button class="secondary" onclick="openReportModal(${g.id}, '${g.title}')">
+    AIに途中報告する
+  </button>
+
+  <button class="secondary" onclick="deleteGoal(${g.id})">
+    目標を削除
+  </button>
+</div>`).join('') || '<p class="small">目標はまだありません。</p>';
+      const todos = await (await fetch('/api/todos/today')).json();
+      document.querySelector('#todos').innerHTML = todos.map(t =>
+        `<p><label><input type="checkbox" ${t.completed ? 'checked' : ''} onchange="toggleTodo(${t.id})"> <span style="${t.completed ? 'text-decoration:line-through;color:#687386' : ''}">${t.title}</span></label></p>`).join('') || '<p class="small">今日のTodoはまだありません。</p>';
+      const schedules = await (await fetch('/api/schedules')).json();
+      document.querySelector('#schedules').innerHTML = schedules.map(s =>
+        `<li><b>${s.title}</b><br><span class="small">${format(s.dateTime)} の ${s.notifyMinutesBefore}分前に通知</span><br><button class="secondary" onclick="deleteSchedule(${s.id})">削除</button></li>`).join('') || '<li>予定はまだありません。</li>';
+      const notices = await (await fetch('/api/notifications')).json();
+      document.querySelector('#notifications').innerHTML = notices.map(n =>
+        `<div class="notification"><b>${n.scheduleTitle}</b><br>${n.message}<br><span class="small">作成: ${format(n.createdAt)}</span></div>`).join('') || '<p class="small">通知はまだありません。</p>';
+    }
+    async function addSchedule() {
+      const title = document.querySelector('#title').value.trim();
+      const dateTime = document.querySelector('#dateTime').value;
+      const notifyMinutesBefore = Number(document.querySelector('#minutes').value);
+      if (!title || !dateTime || notifyMinutesBefore < 1) return alert('予定名・日時・通知する分数を入力してください。');
+      await fetch('/api/schedules', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, dateTime, notifyMinutesBefore}) });
+      document.querySelector('#title').value = ''; load();
+    }
+    async function deleteSchedule(id) {
+      if (!confirm('この予定を削除しますか？')) return;
+      const result = await (await fetch(`/api/schedules/${id}`, {method:'DELETE'})).json();
+      alert(result.message); load();
+    }
+    async function checkNow() { const r = await (await fetch('/api/notifications/check', {method:'POST'})).json(); alert(r.message); load(); }
+    function openGoalModal() { document.querySelector('#goalModal').classList.add('open'); }
+    function closeGoalModal() { document.querySelector('#goalModal').classList.remove('open'); }
+    async function askGoalPlan() {
+      const title = document.querySelector('#goalTitle').value.trim();
+      const requirements = document.querySelector('#goalRequirements').value.trim();
+      if (!title) return alert('目標のタイトルを入力してください。');
+      const button = document.querySelector('#planButton'); const result = document.querySelector('#proposalResult');
+      button.disabled = true; button.textContent = 'AIが考えています…'; result.style.display = 'block'; result.textContent = '計画候補を作成中です…';
+      try {
+        const response = await fetch('/api/goals/plan', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, requirements}) });
+        const data = await response.json(); lastGoalPlan = data.plan; result.textContent = data.plan;
+        document.querySelector('#startGoalButton').style.display = 'inline-block';
+      } catch (error) { result.textContent = '計画候補を作れませんでした。アプリの起動状態とAPIキーを確認してください。'; }
+      finally { button.disabled = false; button.textContent = 'AIに計画を相談する'; }
+    }
+    async function startGoal() {
+      const title = document.querySelector('#goalTitle').value.trim();
+      const requirements = document.querySelector('#goalRequirements').value.trim();
+      if (!title || !lastGoalPlan) return alert('先にAIへ計画を相談してください。');
+      const response = await fetch('/api/goals', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, requirements, plan:lastGoalPlan}) });
+      if (!response.ok) return alert('目標を保存できませんでした。');
+      alert('目標を開始しました！ 次はこの計画を毎日のTodoにしていきましょう。');
+      closeGoalModal(); document.querySelector('#goalTitle').value = ''; document.querySelector('#goalRequirements').value = '';
+      document.querySelector('#proposalResult').style.display = 'none'; document.querySelector('#startGoalButton').style.display = 'none'; lastGoalPlan = ''; load();
+    }
+    async function generateTodos(goalId, button) {
+      button.disabled = true; button.textContent = 'AIが今日のTodoを考えています…';
+      try {
+        const response = await fetch(`/api/goals/${goalId}/todos/generate`, {method:'POST'});
+        if (!response.ok) throw new Error();
+        await load();
+      } catch (error) { alert('Todoを作れませんでした。アプリの起動状態とAPIキーを確認してください。'); }
+      finally { button.disabled = false; button.textContent = '今日のTodoを作る'; }
+    }
+    async function deleteGoal(id) {
+      if (!confirm('この目標と関連するTodoを削除しますか？')) return;
+      const result = await (await fetch(`/api/goals/${id}`, {method:'DELETE'})).json();
+      alert(result.message); load();
+    }
+    async function toggleTodo(id) { await fetch(`/api/todos/${id}/complete`, {method:'PATCH'}); load(); }
+    load(); setInterval(load, 30000);
+  </script>
+  <div class="modal" id="reportModal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2 id="reportGoalTitle">AIに途中報告する</h2>
+
+      <button class="close" onclick="closeReportModal()">×</button>
+    </div>
+
+    <p class="hint">
+      できたこと、困ったこと、時間が取れなかったことなどを自由に書いてください。
+    </p>
+
+    <textarea id="reportText"
+      placeholder="例：今日は30分だけ勉強できました。配列の問題でつまずきました。"></textarea>
+
+    <button>AIに相談する</button>
+  </div>
+</div>
+</body>
+</html>
