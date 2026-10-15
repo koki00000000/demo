@@ -10,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,7 +20,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public class NotificationService {
 
     private static final String GEMINI_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent";
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+    private static final int MAX_ATTEMPTS = 3;
+    private static final long RETRY_DELAY_MS = 500;
 
     private final ScheduleRepository scheduleRepository;
     private final AiNotificationRepository notificationRepository;
@@ -123,13 +126,7 @@ public class NotificationService {
         try {
             ObjectNode body = objectMapper.createObjectNode();
             body.putArray("contents").addObject().putArray("parts").addObject().put("text", prompt);
-            String response = restClient.post()
-                    .uri(GEMINI_URL)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .header("x-goog-api-key", cleanApiKey)
-                    .body(body.toString())
-                    .retrieve()
-                    .body(String.class);
+            String response = postGeminiWithRetry(cleanApiKey, body);
             JsonNode root = objectMapper.readTree(response);
             String text = root.path("candidates").path(0).path("content")
                     .path("parts").path(0).path("text").asText();
@@ -147,15 +144,31 @@ public class NotificationService {
         ObjectNode body = objectMapper.createObjectNode();
         body.putArray("contents").addObject().putArray("parts").addObject().put("text", prompt);
         body.putObject("generationConfig").put("responseMimeType", "application/json");
-        String response = restClient.post()
-                .uri(GEMINI_URL)
-                .contentType(MediaType.APPLICATION_JSON)
-                .header("x-goog-api-key", cleanApiKey)
-                .body(body.toString())
-                .retrieve()
-                .body(String.class);
+        String response = postGeminiWithRetry(cleanApiKey, body);
         String text = objectMapper.readTree(response).path("candidates").path(0).path("content")
                 .path("parts").path(0).path("text").asText();
         return objectMapper.readTree(text);
+    }
+
+    private String postGeminiWithRetry(String cleanApiKey, ObjectNode body) throws Exception {
+        Exception lastException = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                return restClient.post()
+                        .uri(GEMINI_URL)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("x-goog-api-key", cleanApiKey)
+                        .body(body.toString())
+                        .retrieve()
+                        .body(String.class);
+            } catch (RestClientResponseException e) {
+                lastException = e;
+                if (e.getStatusCode().value() != 503 || attempt == MAX_ATTEMPTS) {
+                    throw e;
+                }
+                Thread.sleep(RETRY_DELAY_MS * attempt);
+            }
+        }
+        throw lastException;
     }
 }
