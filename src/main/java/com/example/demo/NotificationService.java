@@ -21,11 +21,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public class NotificationService {
 
     private static final String[] GEMINI_MODELS = {
-            "gemini-3.8-flash"
+            "gemini-3.8-flash",
+            "gemini-3.5-flash-lite",
+            "gemini-2.5-flash"
     };
-    private static final int MAX_RETRIES = 3;
-    private static final long INITIAL_BACKOFF_MS = 2_000;
-    private static final long MAX_BACKOFF_MS = 4_000;
+    private static final int MAX_RETRIES = 2;
+    private static final long RETRY_DELAY_MS = 2_000;
+    private static final String BUSY_MESSAGE =
+            "ただいまAIが混雑しています。数秒後にもう一度ボタンを押してください";
 
     private final ScheduleRepository scheduleRepository;
     private final AiNotificationRepository notificationRepository;
@@ -105,6 +108,8 @@ public class NotificationService {
             if (!titles.isEmpty()) {
                 return titles;
             }
+        } catch (GeminiUnavailableException e) {
+            return List.of(BUSY_MESSAGE);
         } catch (Exception ignored) {
             // JSON形式で返らない場合は、下の通常応答を1つのTodoとして保存します。
         }
@@ -135,7 +140,7 @@ public class NotificationService {
                     .path("parts").path(0).path("text").asText();
             return text.isBlank() ? "AIから通知文を受け取れませんでした。" : text;
         } catch (Exception e) {
-            return "AI通知を作成できませんでした: " + e.getMessage();
+            return BUSY_MESSAGE;
         }
     }
 
@@ -154,7 +159,6 @@ public class NotificationService {
     }
 
     private String postGeminiWithRetry(String cleanApiKey, ObjectNode body) throws Exception {
-        Exception lastException = null;
         for (String model : GEMINI_MODELS) {
             String url = geminiGenerateUrl(model);
             int maxAttempts = MAX_RETRIES + 1;
@@ -168,25 +172,25 @@ public class NotificationService {
                             .retrieve()
                             .body(String.class);
                 } catch (RestClientResponseException e) {
-                    lastException = e;
                     int status = e.getStatusCode().value();
                     if (status == 404) {
                         break;
                     }
-                    if (!isRetryableStatus(status) || attempt == maxAttempts) {
-                        throw e;
+                    if (isCongestedStatus(status) && attempt <= MAX_RETRIES) {
+                        Thread.sleep(RETRY_DELAY_MS);
+                        continue;
                     }
-                    Thread.sleep(backoffDelayMs(attempt));
+                    break;
                 } catch (ResourceAccessException e) {
-                    lastException = e;
-                    if (attempt == maxAttempts) {
-                        throw e;
+                    if (attempt <= MAX_RETRIES) {
+                        Thread.sleep(RETRY_DELAY_MS);
+                        continue;
                     }
-                    Thread.sleep(backoffDelayMs(attempt));
+                    break;
                 }
             }
         }
-        throw lastException;
+        throw new GeminiUnavailableException();
     }
 
     private String geminiGenerateUrl(String model) {
@@ -194,12 +198,13 @@ public class NotificationService {
         return "https://generativelanguage.googleapis.com/v1beta/models/" + modelId + ":generateContent";
     }
 
-    private boolean isRetryableStatus(int status) {
+    private boolean isCongestedStatus(int status) {
         return status == 429 || status == 500 || status == 502 || status == 503 || status == 504;
     }
 
-    private long backoffDelayMs(int failedAttempt) {
-        long delay = INITIAL_BACKOFF_MS * (1L << (failedAttempt - 1));
-        return Math.min(delay, MAX_BACKOFF_MS);
+    private static final class GeminiUnavailableException extends RuntimeException {
+        GeminiUnavailableException() {
+            super(BUSY_MESSAGE);
+        }
     }
 }
