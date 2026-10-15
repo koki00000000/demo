@@ -21,8 +21,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public class NotificationService {
 
     private static final String[] GEMINI_MODELS = {
-            "gemini-2.5-flash",
-            "gemini-2.0-flash"
+            "gemini-3.8-flash"
     };
     private static final int MAX_RETRIES = 3;
     private static final long INITIAL_BACKOFF_MS = 2_000;
