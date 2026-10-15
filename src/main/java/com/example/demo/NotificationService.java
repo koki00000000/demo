@@ -20,8 +20,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 @Service
 public class NotificationService {
 
-    private static final String GEMINI_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+    private static final String[] GEMINI_MODELS = {
+            "gemini-2.5-flash",
+            "gemini-2.0-flash"
+    };
     private static final int MAX_RETRIES = 3;
     private static final long INITIAL_BACKOFF_MS = 2_000;
     private static final long MAX_BACKOFF_MS = 4_000;
@@ -154,31 +156,43 @@ public class NotificationService {
 
     private String postGeminiWithRetry(String cleanApiKey, ObjectNode body) throws Exception {
         Exception lastException = null;
-        int maxAttempts = MAX_RETRIES + 1;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            try {
-                return restClient.post()
-                        .uri(GEMINI_URL)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .header("x-goog-api-key", cleanApiKey)
-                        .body(body.toString())
-                        .retrieve()
-                        .body(String.class);
-            } catch (RestClientResponseException e) {
-                lastException = e;
-                if (!isRetryableStatus(e.getStatusCode().value()) || attempt == maxAttempts) {
-                    throw e;
+        for (String model : GEMINI_MODELS) {
+            String url = geminiGenerateUrl(model);
+            int maxAttempts = MAX_RETRIES + 1;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                try {
+                    return restClient.post()
+                            .uri(url)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .header("x-goog-api-key", cleanApiKey)
+                            .body(body.toString())
+                            .retrieve()
+                            .body(String.class);
+                } catch (RestClientResponseException e) {
+                    lastException = e;
+                    int status = e.getStatusCode().value();
+                    if (status == 404) {
+                        break;
+                    }
+                    if (!isRetryableStatus(status) || attempt == maxAttempts) {
+                        throw e;
+                    }
+                    Thread.sleep(backoffDelayMs(attempt));
+                } catch (ResourceAccessException e) {
+                    lastException = e;
+                    if (attempt == maxAttempts) {
+                        throw e;
+                    }
+                    Thread.sleep(backoffDelayMs(attempt));
                 }
-                Thread.sleep(backoffDelayMs(attempt));
-            } catch (ResourceAccessException e) {
-                lastException = e;
-                if (attempt == maxAttempts) {
-                    throw e;
-                }
-                Thread.sleep(backoffDelayMs(attempt));
             }
         }
         throw lastException;
+    }
+
+    private String geminiGenerateUrl(String model) {
+        String modelId = model.startsWith("models/") ? model.substring("models/".length()) : model;
+        return "https://generativelanguage.googleapis.com/v1beta/models/" + modelId + ":generateContent";
     }
 
     private boolean isRetryableStatus(int status) {
