@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
@@ -21,8 +22,9 @@ public class NotificationService {
 
     private static final String GEMINI_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
-    private static final int MAX_ATTEMPTS = 3;
-    private static final long RETRY_DELAY_MS = 500;
+    private static final int MAX_RETRIES = 3;
+    private static final long INITIAL_BACKOFF_MS = 2_000;
+    private static final long MAX_BACKOFF_MS = 4_000;
 
     private final ScheduleRepository scheduleRepository;
     private final AiNotificationRepository notificationRepository;
@@ -152,7 +154,8 @@ public class NotificationService {
 
     private String postGeminiWithRetry(String cleanApiKey, ObjectNode body) throws Exception {
         Exception lastException = null;
-        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        int maxAttempts = MAX_RETRIES + 1;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
                 return restClient.post()
                         .uri(GEMINI_URL)
@@ -163,12 +166,27 @@ public class NotificationService {
                         .body(String.class);
             } catch (RestClientResponseException e) {
                 lastException = e;
-                if (e.getStatusCode().value() != 503 || attempt == MAX_ATTEMPTS) {
+                if (!isRetryableStatus(e.getStatusCode().value()) || attempt == maxAttempts) {
                     throw e;
                 }
-                Thread.sleep(RETRY_DELAY_MS * attempt);
+                Thread.sleep(backoffDelayMs(attempt));
+            } catch (ResourceAccessException e) {
+                lastException = e;
+                if (attempt == maxAttempts) {
+                    throw e;
+                }
+                Thread.sleep(backoffDelayMs(attempt));
             }
         }
         throw lastException;
+    }
+
+    private boolean isRetryableStatus(int status) {
+        return status == 429 || status == 500 || status == 502 || status == 503 || status == 504;
+    }
+
+    private long backoffDelayMs(int failedAttempt) {
+        long delay = INITIAL_BACKOFF_MS * (1L << (failedAttempt - 1));
+        return Math.min(delay, MAX_BACKOFF_MS);
     }
 }
