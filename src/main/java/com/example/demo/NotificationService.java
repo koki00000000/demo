@@ -21,7 +21,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 public class NotificationService {
 
     private static final String GEMINI_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
     private static final int MAX_RETRIES = 3;
     private static final long INITIAL_BACKOFF_MS = 2_000;
     private static final long MAX_BACKOFF_MS = 4_000;
