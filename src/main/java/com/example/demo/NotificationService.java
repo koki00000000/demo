@@ -29,6 +29,10 @@ public class NotificationService {
     private static final long RETRY_DELAY_MS = 2_000;
     private static final String BUSY_MESSAGE =
             "ただいまAIが混雑しています。数秒後にもう一度ボタンを押してください";
+    private static final String RESPONSE_CONSTRAINT =
+            "\n\n【制約条件】\n"
+                    + "・回答は要点のみを絞り、全体で 200 文字〜300 文字程度の簡潔な文章にしてください。\n"
+                    + "・箇条書きを活用し、長々とした前置きや挨拶は一切省略してください。";
 
     private final ScheduleRepository scheduleRepository;
     private final AiNotificationRepository notificationRepository;
@@ -133,7 +137,8 @@ public class NotificationService {
 
         try {
             ObjectNode body = objectMapper.createObjectNode();
-            body.putArray("contents").addObject().putArray("parts").addObject().put("text", prompt);
+            body.putArray("contents").addObject().putArray("parts").addObject()
+                    .put("text", prompt + RESPONSE_CONSTRAINT);
             String response = postGeminiWithRetry(cleanApiKey, body);
             JsonNode root = objectMapper.readTree(response);
             String text = root.path("candidates").path(0).path("content")
@@ -150,7 +155,8 @@ public class NotificationService {
             throw new IllegalStateException("Gemini APIキーが設定されていません。");
         }
         ObjectNode body = objectMapper.createObjectNode();
-        body.putArray("contents").addObject().putArray("parts").addObject().put("text", prompt);
+        body.putArray("contents").addObject().putArray("parts").addObject()
+                .put("text", prompt + RESPONSE_CONSTRAINT);
         body.putObject("generationConfig").put("responseMimeType", "application/json");
         String response = postGeminiWithRetry(cleanApiKey, body);
         String text = objectMapper.readTree(response).path("candidates").path(0).path("content")
