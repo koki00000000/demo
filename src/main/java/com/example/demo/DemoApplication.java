@@ -84,6 +84,11 @@ public class DemoApplication {
         return notificationService.createGreeting();
     }
 
+    @PostMapping("/api/assistant/advice")
+    public Map<String, String> scheduleAdvice(@RequestBody ScheduleAdviceRequest request) {
+        return Map.of("message", notificationService.createScheduleAdvice(request.title()));
+    }
+
     @PostMapping("/api/goals/plan")
     public Map<String, String> createGoalPlan(@RequestBody GoalPlanRequest request) {
         if (request.title() == null || request.title().isBlank()) {
@@ -147,5 +152,8 @@ public class DemoApplication {
     }
 
     public record StartGoalRequest(String title, String requirements, String plan) {
+    }
+
+    public record ScheduleAdviceRequest(String title) {
     }
 }

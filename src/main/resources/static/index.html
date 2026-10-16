@@ -26,6 +26,12 @@
     .calendar-day.today { border:2px solid #2764d9; }
     .calendar-day.empty { border:0; background:transparent; cursor:default; }
     .calendar-event { display:block; margin-top:4px; padding:2px 4px; border-radius:4px; background:#e8eefb; color:#2454aa; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .assistant-panel { display:flex; align-items:flex-start; gap:14px; background:linear-gradient(135deg,#f7f3ff,#eef5ff); }
+    .assistant-avatar { flex:0 0 52px; width:52px; height:52px; display:grid; place-items:center; border-radius:50%; background:#fff; box-shadow:0 2px 10px #20304018; font-size:28px; }
+    .assistant-content { min-width:0; flex:1; }
+    .assistant-content h2 { margin:0 0 8px; font-size:18px; }
+    .assistant-bubble { position:relative; margin:0; padding:13px 15px; border-radius:4px 14px 14px 14px; background:#fff; line-height:1.65; white-space:pre-wrap; }
+    #assistantLink { display:inline-block; margin-top:8px; color:#2454aa; font-weight:700; }
     .modal { display:none; position:fixed; inset:0; z-index:10; background:#1c243466; padding:24px; overflow:auto; }
     .modal.open { display:block; } .modal-card { max-width:680px; margin:42px auto; background:#fff; border-radius:18px; padding:28px; box-shadow:0 12px 40px #0004; }
     .modal-head { display:flex; justify-content:space-between; align-items:start; gap:16px; } .modal-head h2 { margin:0; }
@@ -38,6 +44,15 @@
     <div><h1>AI予定秘書</h1><p class="hint">予定の少し前に、AIが準備を手伝う通知を作ります。</p></div>
     <button onclick="openGoalModal()">＋ 目標を作る</button>
   </header>
+
+  <section class="assistant-panel" aria-live="polite">
+    <div class="assistant-avatar" role="img" aria-label="AI秘書のアイコン">🤖</div>
+    <div class="assistant-content">
+      <h2>AI秘書</h2>
+      <p id="assistantMessage" class="assistant-bubble">今日の予定を一緒に整えましょう。予定を追加すると、準備のヒントをお伝えします。</p>
+      <a id="assistantLink" href="#" target="_blank" rel="noopener" hidden></a>
+    </div>
+  </section>
 
   <section>
     <h2>進行中の目標</h2>
@@ -98,6 +113,62 @@
     let schedulesCache = [];
     let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     let lastReminderCheck = Date.now() - 60000;
+    let nextBreakSuggestionAt = Date.now() + 50 * 60000;
+
+    function setAssistantMessage(message, linkText = '', linkUrl = '') {
+      document.querySelector('#assistantMessage').textContent = message;
+      const link = document.querySelector('#assistantLink');
+      link.textContent = linkText;
+      link.href = linkUrl || '#';
+      link.hidden = !linkUrl;
+    }
+
+    function fallbackScheduleAdvice(title) {
+      if (/勉強|数学|英語|Java|資格|試験|課題|復習/i.test(title)) {
+        return 'この範囲は集中力を使いそうです！最初の10分で取り組む範囲を決めて、サクッと始めましょう💪';
+      }
+      if (/カフェ|外出|買い物|旅行|ランチ|食事/i.test(title)) {
+        return '良い時間になりそうですね！移動時間や持ち物、予算感も先に確認しておくと安心です☕';
+      }
+      return `「${title}」、いいですね！少し早めに準備を始めて、気持ちよく取り組みましょう✨`;
+    }
+
+    async function showScheduleAdvice(title) {
+      setAssistantMessage(fallbackScheduleAdvice(title));
+      try {
+        const response = await fetch('/api/assistant/advice', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title})
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.message && !data.message.includes('混雑しています')) setAssistantMessage(data.message);
+      } catch (_) {
+        // APIに接続できない場合も、先に表示した定型コメントをそのまま使う。
+      }
+    }
+
+    function checkBreakSuggestion() {
+      const now = Date.now();
+      if (now < nextBreakSuggestionAt) return;
+      const showBgm = Math.floor(now / (50 * 60000)) % 2 === 0;
+      if (showBgm) {
+        setAssistantMessage('少し集中が切れてくる頃ですね。音楽を変えて気分を切り替えてみませんか？🎧', '作業用BGMを探す', 'https://www.youtube.com/results?search_query=作業用BGM');
+      } else {
+        setAssistantMessage('少し集中が切れてくる頃ですね。冷たいお茶でも飲んで一息入れませんか？🍵');
+      }
+      nextBreakSuggestionAt = now + 50 * 60000;
+    }
+
+    async function fetchList(url) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`${response.status}`);
+        return await response.json();
+      } catch (_) {
+        setAssistantMessage('保存データを読み込めませんでした。アプリが起動しているか確認して、もう一度更新してください。');
+        return null;
+      }
+    }
 
     function notificationStatusText() {
       if (!('Notification' in window)) return 'このブラウザは非対応です';
@@ -175,8 +246,10 @@
     }
 
     async function load() {
-      const goals = await (await fetch('/api/goals')).json();
-      document.querySelector('#goals').innerHTML = goals.map(g =>
+      const [goals, todos, schedules] = await Promise.all([
+        fetchList('/api/goals'), fetchList('/api/todos/today'), fetchList('/api/schedules')
+      ]);
+      if (goals) document.querySelector('#goals').innerHTML = goals.map(g =>
         `<div class="notification">
   <b>${g.title}</b><br>
   <span class="small">AIと作った計画</span><br>
@@ -194,22 +267,25 @@
     目標を削除
   </button>
 </div>`).join('') || '<p class="small">目標はまだありません。</p>';
-      const todos = await (await fetch('/api/todos/today')).json();
-      document.querySelector('#todos').innerHTML = todos.map(t =>
+      if (todos) document.querySelector('#todos').innerHTML = todos.map(t =>
         `<p><label><input type="checkbox" ${t.completed ? 'checked' : ''} onchange="toggleTodo(${t.id})"> <span style="${t.completed ? 'text-decoration:line-through;color:#687386' : ''}">${t.title}</span></label></p>`).join('') || '<p class="small">今日のTodoはまだありません。</p>';
-      const schedules = await (await fetch('/api/schedules')).json();
-      schedulesCache = schedules;
-      document.querySelector('#schedules').innerHTML = schedules.map(s =>
+      if (schedules) {
+        schedulesCache = schedules;
+        document.querySelector('#schedules').innerHTML = schedules.map(s =>
         `<li><b>${s.title}</b><br><span class="small">${format(s.dateTime)} の ${s.notifyMinutesBefore}分前に通知</span><br><button class="secondary" onclick="deleteSchedule(${s.id})">削除</button></li>`).join('') || '<li>予定はまだありません。</li>';
-      renderCalendar();
+        renderCalendar();
+      }
     }
     async function addSchedule() {
       const title = document.querySelector('#title').value.trim();
       const dateTime = document.querySelector('#dateTime').value;
       const notifyMinutesBefore = Number(document.querySelector('#minutes').value);
       if (!title || !dateTime || notifyMinutesBefore < 1) return alert('予定名・日時・通知する分数を入力してください。');
-      await fetch('/api/schedules', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, dateTime, notifyMinutesBefore}) });
-      document.querySelector('#title').value = ''; load();
+      const response = await fetch('/api/schedules', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, dateTime, notifyMinutesBefore}) });
+      if (!response.ok) return alert('予定を保存できませんでした。アプリの起動状態を確認してください。');
+      document.querySelector('#title').value = '';
+      await load();
+      showScheduleAdvice(title);
     }
     async function deleteSchedule(id) {
       if (!confirm('この予定を削除しますか？')) return;
@@ -256,9 +332,12 @@
       alert(result.message); load();
     }
     async function toggleTodo(id) { await fetch(`/api/todos/${id}/complete`, {method:'PATCH'}); load(); }
-    updateNotificationStatus();
-    load();
-    setInterval(checkScheduleReminders, 60000);
+    document.addEventListener('DOMContentLoaded', async () => {
+      updateNotificationStatus();
+      await load();
+      setInterval(checkScheduleReminders, 60000);
+      setInterval(checkBreakSuggestion, 60000);
+    });
   </script>
   <div class="modal" id="reportModal">
   <div class="modal-card">

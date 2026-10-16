@@ -78,6 +78,12 @@ public class NotificationService {
         return askGemini("短い朝の挨拶と、今日も開発を頑張ろうと思える一言を日本語で返してください。");
     }
 
+    public String createScheduleAdvice(String title) {
+        return askGemini("あなたは温かく実用的なAI予定秘書です。予定『" + title
+                + "』に対して、準備の助言と前向きな励ましを日本語で返してください。"
+                + "勉強なら集中のコツ、外出やカフェなら持ち物・予算・移動の観点を優先してください。");
+    }
+
     public String createGoalPlans(String title, String requirements) {
         String safeRequirements = requirements == null || requirements.isBlank()
                 ? "特に条件はありません。無理なく続けられる形を提案してください。"
