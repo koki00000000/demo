@@ -16,6 +16,16 @@
     button { padding:10px 14px; border:0; border-radius:8px; background:#2764d9; color:#fff; cursor:pointer; font-weight:700; font-size:15px; }
     button.secondary { background:#e8eefb; color:#2454aa; } button.close { background:transparent; color:#687386; font-size:22px; padding:0 8px; }
     li { margin:10px 0; } .notification { border-left:4px solid #7a55e8; padding:10px 14px; background:#f7f3ff; margin:10px 0; border-radius:6px; white-space:pre-wrap; }
+    .notification-settings { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+    #notificationStatus { font-weight:700; }
+    .calendar-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .calendar-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:5px; margin-top:14px; }
+    .calendar-weekday { text-align:center; color:#687386; font-size:13px; font-weight:700; }
+    .calendar-day { min-height:78px; padding:7px; border:1px solid #dde3ee; border-radius:9px; background:#fff; color:#1c2434; text-align:left; font-weight:400; overflow:hidden; }
+    .calendar-day:hover { border-color:#2764d9; }
+    .calendar-day.today { border:2px solid #2764d9; }
+    .calendar-day.empty { border:0; background:transparent; cursor:default; }
+    .calendar-event { display:block; margin-top:4px; padding:2px 4px; border-radius:4px; background:#e8eefb; color:#2454aa; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .modal { display:none; position:fixed; inset:0; z-index:10; background:#1c243466; padding:24px; overflow:auto; }
     .modal.open { display:block; } .modal-card { max-width:680px; margin:42px auto; background:#fff; border-radius:18px; padding:28px; box-shadow:0 12px 40px #0004; }
     .modal-head { display:flex; justify-content:space-between; align-items:start; gap:16px; } .modal-head h2 { margin:0; }
@@ -41,6 +51,16 @@
   </section>
 
   <section>
+    <div class="calendar-head">
+      <button class="secondary" onclick="changeMonth(-1)" aria-label="前の月">‹</button>
+      <h2 id="calendarTitle">カレンダー</h2>
+      <button class="secondary" onclick="changeMonth(1)" aria-label="次の月">›</button>
+    </div>
+    <div id="calendar" class="calendar-grid"></div>
+    <p class="small">日付を押すと、その日の予定を入力できます。</p>
+  </section>
+
+  <section id="scheduleForm">
     <h2>予定を追加</h2>
     <input id="title" type="text" placeholder="例：Java Silverの勉強">
     <input id="dateTime" type="datetime-local">
@@ -49,10 +69,13 @@
   </section>
   <section><h2>予定</h2><ul id="schedules"></ul></section>
   <section>
-    <h2>AI通知</h2>
-    <p class="small">通常は1分ごとに自動確認します。テスト用に今すぐ確認することもできます。</p>
-    <button onclick="checkNow()">今すぐ確認</button>
-    <div id="notifications"></div>
+    <h2>ブラウザ通知</h2>
+    <div class="notification-settings">
+      <span>現在の状態：</span><span id="notificationStatus">確認中</span>
+      <button onclick="enableNotifications()">通知を有効にする</button>
+      <button class="secondary" onclick="sendTestNotification()">テスト通知を送る</button>
+    </div>
+    <p class="small">アプリをブラウザで開いている間、指定した時間前にデスクトップ通知を表示します。</p>
   </section>
 
   <div class="modal" id="goalModal" role="dialog" aria-modal="true">
@@ -72,6 +95,85 @@
   <script>
     const format = v => new Date(v).toLocaleString('ja-JP', { dateStyle:'short', timeStyle:'short' });
     let lastGoalPlan = '';
+    let schedulesCache = [];
+    let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    let lastReminderCheck = Date.now() - 60000;
+
+    function notificationStatusText() {
+      if (!('Notification' in window)) return 'このブラウザは非対応です';
+      return { granted:'許可済み', denied:'ブロック中', default:'未許可' }[Notification.permission];
+    }
+
+    function updateNotificationStatus() {
+      document.querySelector('#notificationStatus').textContent = notificationStatusText();
+    }
+
+    async function enableNotifications() {
+      if (!('Notification' in window)) return updateNotificationStatus();
+      await Notification.requestPermission();
+      updateNotificationStatus();
+    }
+
+    function sendTestNotification() {
+      if (!('Notification' in window) || Notification.permission !== 'granted') {
+        alert('先に「通知を有効にする」を押して、通知を許可してください。');
+        return;
+      }
+      new Notification('AI予定秘書', { body: 'テスト通知です！今日も一緒に頑張りましょう！' });
+    }
+
+    function localDateKey(value) {
+      const date = new Date(value);
+      const pad = number => String(number).padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    }
+
+    function renderCalendar() {
+      const year = calendarMonth.getFullYear();
+      const month = calendarMonth.getMonth();
+      document.querySelector('#calendarTitle').textContent = `${year}年${month + 1}月`;
+      const weekdays = ['日','月','火','水','木','金','土'];
+      const firstWeekday = new Date(year, month, 1).getDay();
+      const lastDay = new Date(year, month + 1, 0).getDate();
+      const todayKey = localDateKey(new Date());
+      let html = weekdays.map(day => `<div class="calendar-weekday">${day}</div>`).join('');
+      html += '<div class="calendar-day empty"></div>'.repeat(firstWeekday);
+      for (let day = 1; day <= lastDay; day++) {
+        const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const events = schedulesCache.filter(schedule => localDateKey(schedule.dateTime) === dateKey);
+        html += `<button class="calendar-day ${dateKey === todayKey ? 'today' : ''}" onclick="selectCalendarDate('${dateKey}')"><b>${day}</b>${events.map(event => `<span class="calendar-event">${event.title}</span>`).join('')}</button>`;
+      }
+      document.querySelector('#calendar').innerHTML = html;
+    }
+
+    function changeMonth(offset) {
+      calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + offset, 1);
+      renderCalendar();
+    }
+
+    function selectCalendarDate(dateKey) {
+      document.querySelector('#dateTime').value = `${dateKey}T09:00`;
+      document.querySelector('#scheduleForm').scrollIntoView({ behavior:'smooth' });
+      document.querySelector('#title').focus();
+    }
+
+    async function checkScheduleReminders() {
+      const now = Date.now();
+      if ('Notification' in window && Notification.permission === 'granted') {
+        const sent = new Set(JSON.parse(localStorage.getItem('sentScheduleNotifications') || '[]'));
+        for (const schedule of schedulesCache) {
+          const notificationTime = new Date(schedule.dateTime).getTime() - schedule.notifyMinutesBefore * 60000;
+          const key = `${schedule.id}:${notificationTime}`;
+          if (notificationTime > lastReminderCheck && notificationTime <= now && !sent.has(key)) {
+            new Notification('AI予定秘書', { body: `${schedule.title}まであと${schedule.notifyMinutesBefore}分です。準備を始めましょう！` });
+            sent.add(key);
+          }
+        }
+        localStorage.setItem('sentScheduleNotifications', JSON.stringify([...sent].slice(-100)));
+      }
+      lastReminderCheck = now;
+    }
+
     async function load() {
       const goals = await (await fetch('/api/goals')).json();
       document.querySelector('#goals').innerHTML = goals.map(g =>
@@ -96,11 +198,10 @@
       document.querySelector('#todos').innerHTML = todos.map(t =>
         `<p><label><input type="checkbox" ${t.completed ? 'checked' : ''} onchange="toggleTodo(${t.id})"> <span style="${t.completed ? 'text-decoration:line-through;color:#687386' : ''}">${t.title}</span></label></p>`).join('') || '<p class="small">今日のTodoはまだありません。</p>';
       const schedules = await (await fetch('/api/schedules')).json();
+      schedulesCache = schedules;
       document.querySelector('#schedules').innerHTML = schedules.map(s =>
         `<li><b>${s.title}</b><br><span class="small">${format(s.dateTime)} の ${s.notifyMinutesBefore}分前に通知</span><br><button class="secondary" onclick="deleteSchedule(${s.id})">削除</button></li>`).join('') || '<li>予定はまだありません。</li>';
-      const notices = await (await fetch('/api/notifications')).json();
-      document.querySelector('#notifications').innerHTML = notices.map(n =>
-        `<div class="notification"><b>${n.scheduleTitle}</b><br>${n.message}<br><span class="small">作成: ${format(n.createdAt)}</span></div>`).join('') || '<p class="small">通知はまだありません。</p>';
+      renderCalendar();
     }
     async function addSchedule() {
       const title = document.querySelector('#title').value.trim();
@@ -115,7 +216,6 @@
       const result = await (await fetch(`/api/schedules/${id}`, {method:'DELETE'})).json();
       alert(result.message); load();
     }
-    async function checkNow() { const r = await (await fetch('/api/notifications/check', {method:'POST'})).json(); alert(r.message); load(); }
     function openGoalModal() { document.querySelector('#goalModal').classList.add('open'); }
     function closeGoalModal() { document.querySelector('#goalModal').classList.remove('open'); }
     async function askGoalPlan() {
@@ -156,7 +256,9 @@
       alert(result.message); load();
     }
     async function toggleTodo(id) { await fetch(`/api/todos/${id}/complete`, {method:'PATCH'}); load(); }
-    load(); setInterval(load, 30000);
+    updateNotificationStatus();
+    load();
+    setInterval(checkScheduleReminders, 60000);
   </script>
   <div class="modal" id="reportModal">
   <div class="modal-card">
