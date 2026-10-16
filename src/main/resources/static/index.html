@@ -7,10 +7,8 @@
   <style>
     :root { color:#1c2434; background:#f6f8fc; font-family:system-ui, sans-serif; }
     body { max-width:760px; margin:28px auto; padding:0 20px; }
-    header { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
-    .header-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
     h1 { margin:0 0 4px; } .hint,.small { color:#687386; } .hint { margin-top:0; }
-    .perm-granted { color:#1a7f4c; font-weight:700; } .perm-denied { color:#b42318; font-weight:700; } .perm-default { color:#2454aa; font-weight:700; }
     section { background:#fff; border-radius:14px; padding:22px; margin:18px 0; box-shadow:0 2px 10px #20304012; }
     input, textarea { box-sizing:border-box; padding:10px; margin:5px 0; border:1px solid #ccd3df; border-radius:8px; font:inherit; }
     input[type=text], textarea { width:100%; } input[type=datetime-local] { width:68%; } input[type=number] { width:28%; }
@@ -28,20 +26,8 @@
 <body>
   <header>
     <div><h1>AI予定秘書</h1><p class="hint">予定の少し前に、AIが準備を手伝う通知を作ります。</p></div>
-    <div class="header-actions">
-      <button class="secondary" onclick="enableNotifications()">通知を有効にする</button>
-      <button class="secondary" onclick="sendTestNotification()">テスト通知を送る</button>
-      <button onclick="openGoalModal()">＋ 目標を作る</button>
-    </div>
+    <button onclick="openGoalModal()">＋ 目標を作る</button>
   </header>
-
-  <section>
-    <h2>ブラウザ通知</h2>
-    <p class="small">許可状態: <span id="notificationPermission" class="perm-default">確認中…</span></p>
-    <p class="small">このタブを開いたままにしておくと、予定の通知時刻にバックグラウンドでもブラウザ通知が届きます。</p>
-    <button onclick="enableNotifications()">通知を有効にする</button>
-    <button class="secondary" onclick="sendTestNotification()">テスト通知を送る</button>
-  </section>
 
   <section>
     <h2>進行中の目標</h2>
