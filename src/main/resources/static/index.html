@@ -26,14 +26,14 @@
     .calendar-day.today { border:2px solid #2764d9; }
     .calendar-day.empty { border:0; background:transparent; cursor:default; }
     .calendar-event { display:block; margin-top:4px; padding:2px 4px; border-radius:4px; background:#e8eefb; color:#2454aa; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .app-grid { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(320px,1fr); grid-template-areas:"assistant schedules" "calendar schedules" "form routines" "form todos" "goals goals" "materials materials" "sync sync" "notices notices"; gap:18px 22px; align-items:start; }
+    .app-grid { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(320px,1fr); grid-template-areas:"calendar schedules" "form routines" "form todos" "goals goals" "materials materials" "sync sync" "notices notices"; gap:18px 22px; align-items:start; }
     .app-grid > section { margin:0; }
-    .area-assistant { grid-area:assistant; } .area-calendar { grid-area:calendar; } .area-form { grid-area:form; }
+    .area-calendar { grid-area:calendar; } .area-form { grid-area:form; }
     .area-schedules { grid-area:schedules; } .area-routines { grid-area:routines; } .area-todos { grid-area:todos; }
     .area-goals { grid-area:goals; } .area-materials { grid-area:materials; } .area-sync { grid-area:sync; } .area-notices { grid-area:notices; }
-    .assistant-panel { display:flex; align-items:flex-start; gap:14px; background:linear-gradient(135deg,#f7f3ff,#eef5ff); }
-    .assistant-panel .close { display:none; }
-    .assistant-toggle { display:none; position:fixed; right:20px; bottom:20px; z-index:21; border-radius:999px; box-shadow:0 5px 22px #173b7a55; }
+    .assistant-panel { position:fixed; right:20px; bottom:78px; z-index:20; width:min(390px,calc(100vw - 40px)); max-height:72vh; overflow:auto; display:flex; align-items:flex-start; gap:14px; background:linear-gradient(135deg,#f7f3ff,#eef5ff); transform:translateX(calc(100% + 40px)); opacity:0; transition:.25s ease; }
+    .assistant-panel.open { transform:translateX(0); opacity:1; }
+    .assistant-toggle { display:block; position:fixed; right:20px; bottom:20px; z-index:21; border-radius:999px; box-shadow:0 5px 22px #173b7a55; }
     .assistant-avatar { flex:0 0 52px; width:52px; height:52px; display:grid; place-items:center; border-radius:50%; background:#fff; box-shadow:0 2px 10px #20304018; font-size:28px; }
     .assistant-content { min-width:0; flex:1; }
     .assistant-content h2 { margin:0 0 8px; font-size:18px; }
@@ -64,7 +64,6 @@
       .assistant-panel { position:fixed; inset:auto 0 0 0; z-index:20; width:auto !important; max-height:82vh; overflow:auto; border-radius:18px 18px 0 0; transform:translateY(105%); opacity:0; transition:.25s ease; }
       .assistant-panel.open { transform:translateY(0); }
       .assistant-panel.open { opacity:1; }
-      .assistant-panel .close { display:block; }
       .assistant-toggle { display:block; right:14px; bottom:14px; }
       input[type=datetime-local] { width:100%; }
       .calendar-day { min-height:62px; padding:4px; }
@@ -196,6 +195,7 @@
     const format = v => new Date(v).toLocaleString('ja-JP', { dateStyle:'short', timeStyle:'short' });
     let lastGoalPlan = '';
     let schedulesCache = [];
+    let routinesCache = [];
     let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     let lastReminderCheck = Date.now() - 60000;
     let nextBreakSuggestionAt = Date.now() + 50 * 60000;
@@ -307,14 +307,21 @@
       nextBreakSuggestionAt = now + 50 * 60000;
     }
 
-    async function fetchList(url) {
+    function readCache(key) {
+      try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch (_) { return []; }
+    }
+    function writeCache(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+
+    async function fetchList(url, cacheKey) {
       try {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`${response.status}`);
-        return await response.json();
+        const data = await response.json();
+        if (cacheKey) writeCache(cacheKey, data);
+        return data;
       } catch (_) {
         setAssistantMessage('保存データを読み込めませんでした。アプリが起動しているか確認して、もう一度更新してください。');
-        return null;
+        return cacheKey ? readCache(cacheKey) : null;
       }
     }
 
@@ -403,8 +410,9 @@
     }
 
     async function load() {
-      const [goals, todos, schedules] = await Promise.all([
-        fetchList('/api/goals'), fetchList('/api/todos/today'), fetchList('/api/schedules')
+      const [goals, todos, schedules, routines] = await Promise.all([
+        fetchList('/api/goals', 'goalsCache'), fetchList('/api/todos/today', 'todosCache'),
+        fetchList('/api/events', 'eventsCache'), fetchList('/api/routines', 'routinesCache')
       ]);
       if (goals) document.querySelector('#goals').innerHTML = goals.map(g =>
         `<div class="notification">
@@ -432,6 +440,7 @@
         `<li class="priority-${s.priority || 'medium'}"><b>${s.title}</b><br><span class="small">${format(s.dateTime)}／優先度：${{high:'高',medium:'中',low:'低'}[s.priority || 'medium']}／${s.notifyMinutesBefore}分前に通知</span>${transitLinks(s.title)}<br><button class="secondary" onclick="deleteSchedule(${s.id})">削除</button></li>`).join('') || '<li>予定はまだありません。</li>';
         renderCalendar();
       }
+      if (routines) { routinesCache = routines; renderRoutines(); }
     }
     async function addSchedule() {
       const title = document.querySelector('#title').value.trim();
@@ -439,15 +448,18 @@
       const notifyMinutesBefore = Number(document.querySelector('#minutes').value);
       const priority = document.querySelector('#priority').value;
       if (!title || !dateTime || notifyMinutesBefore < 1) return alert('予定名・日時・通知する分数を入力してください。');
-      const response = await fetch('/api/schedules', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, dateTime, notifyMinutesBefore, priority}) });
-      if (!response.ok) return alert('予定を保存できませんでした。アプリの起動状態を確認してください。');
+      const previousEvents=[...schedulesCache];
+      writeCache('eventsCache', [...previousEvents, {id:-Date.now(),title,dateTime,notifyMinutesBefore,priority}]);
+      const response = await fetch('/api/events', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, dateTime, notifyMinutesBefore, priority}) });
+      if (!response.ok) { writeCache('eventsCache',previousEvents); return alert('予定を保存できませんでした。アプリの起動状態を確認してください。'); }
       document.querySelector('#title').value = '';
       await load();
       showScheduleAdvice(title);
     }
     async function deleteSchedule(id) {
       if (!confirm('この予定を削除しますか？')) return;
-      const result = await (await fetch(`/api/schedules/${id}`, {method:'DELETE'})).json();
+      writeCache('eventsCache', schedulesCache.filter(item=>item.id!==id));
+      const result = await (await fetch(`/api/events/${id}`, {method:'DELETE'})).json();
       alert(result.message); load();
     }
     async function analyzeScheduleImage(input) {
@@ -485,28 +497,22 @@
     }
     async function addReverseProposal() {
       if (!reverseProposal) return;
-      const response = await fetch('/api/schedules', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:reverseProposal.title, dateTime:reverseProposal.dateTime, notifyMinutesBefore:30, priority:'medium'})});
+      const response = await fetch('/api/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:reverseProposal.title, dateTime:reverseProposal.dateTime, notifyMinutesBefore:30, priority:'medium'})});
       if (!response.ok) return alert('予定を保存できませんでした。');
       document.querySelector('#reverseProposal').style.display = 'none';
       setAssistantMessage('カレンダーへ追加しました。開始30分前に通知します。');
       reverseProposal = null; await load();
     }
-    function routineState() {
-      const saved = JSON.parse(localStorage.getItem('dailyRoutines') || '[]');
-      const today = localDateKey(new Date());
-      return saved.map(item => item.date === today ? item : {...item, done:false, date:today});
-    }
     function renderRoutines() {
-      const items = routineState(); localStorage.setItem('dailyRoutines', JSON.stringify(items));
-      document.querySelector('#routines').innerHTML = items.map((item,index) => `<div class="routine-row"><input type="checkbox" ${item.done?'checked':''} onchange="toggleRoutine(${index})"><span>${item.title}</span><button class="secondary" onclick="deleteRoutine(${index})">削除</button></div>`).join('') || '<p class="small">ルーティンはまだありません。</p>';
+      document.querySelector('#routines').innerHTML = routinesCache.map(item => `<div class="routine-row"><input type="checkbox" ${item.completed?'checked':''} onchange="toggleRoutine(${item.id})"><span>${item.title}</span><button class="secondary" onclick="deleteRoutine(${item.id})">削除</button></div>`).join('') || '<p class="small">ルーティンはまだありません。</p>';
     }
-    function addRoutine() {
+    async function addRoutine() {
       const input = document.querySelector('#routineInput'); if (!input.value.trim()) return;
-      const items = routineState(); items.push({title:input.value.trim(),done:false,date:localDateKey(new Date())});
-      localStorage.setItem('dailyRoutines', JSON.stringify(items)); input.value=''; renderRoutines();
+      const title=input.value.trim(); const previous=[...routinesCache]; routinesCache.push({id:-Date.now(),title,completed:false}); writeCache('routinesCache',routinesCache); renderRoutines(); input.value='';
+      const response=await fetch('/api/routines',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title})}); if(!response.ok){routinesCache=previous;writeCache('routinesCache',previous);renderRoutines();return alert('ルーティンを保存できませんでした。');} await load();
     }
-    function toggleRoutine(index) { const items=routineState(); items[index].done=!items[index].done; localStorage.setItem('dailyRoutines',JSON.stringify(items)); renderRoutines(); }
-    function deleteRoutine(index) { const items=routineState(); items.splice(index,1); localStorage.setItem('dailyRoutines',JSON.stringify(items)); renderRoutines(); }
+    async function toggleRoutine(id) { const item=routinesCache.find(item=>item.id===id); if(item)item.completed=!item.completed; writeCache('routinesCache',routinesCache); renderRoutines(); await fetch(`/api/routines/${id}/complete`,{method:'PATCH'}); await load(); }
+    async function deleteRoutine(id) { routinesCache=routinesCache.filter(item=>item.id!==id); writeCache('routinesCache',routinesCache); renderRoutines(); await fetch(`/api/routines/${id}`,{method:'DELETE'}); await load(); }
 
     const materialsDb = new Promise((resolve,reject) => {
       const request=indexedDB.open('aiScheduler',1);
@@ -531,7 +537,8 @@
       for(let i=1;i<sorted.length;i++) { const previous=new Date(sorted[i-1].dateTime); const current=new Date(sorted[i].dateTime); const next=new Date(previous.getTime()+60*60000); if(localDateKey(previous)===localDateKey(current) && current<next){ sorted[i].dateTime=toLocalInput(next); moves.push(sorted[i]); } }
       if(!moves.length) return alert('重なっている予定はありません。');
       if(!confirm(`${moves.length}件の予定を前の予定から1時間後へ移動しますか？`)) return;
-      await Promise.all(moves.map(item=>fetch(`/api/schedules/${item.id}/time`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateTime:item.dateTime})}))); await load();
+      writeCache('eventsCache', sorted);
+      await Promise.all(moves.map(item=>fetch(`/api/events/${item.id}/time`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateTime:item.dateTime})}))); await load();
     }
     function icsDate(value) { return toLocalInput(new Date(value)).replace(/[-:]/g,'').replace('T','T')+'00'; }
     function exportIcs() {
@@ -541,7 +548,7 @@
     }
     async function importIcs(input) {
       const file=input.files[0]; if(!file)return; const text=await file.text(); const events=[...text.matchAll(/BEGIN:VEVENT([\s\S]*?)END:VEVENT/g)]; let added=0;
-      for(const match of events){ const title=match[1].match(/SUMMARY:(.*)/)?.[1]?.trim(); const raw=match[1].match(/DTSTART[^:]*:(\d{8}T\d{6})/)?.[1]; if(!title||!raw)continue; const dateTime=`${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}T${raw.slice(9,11)}:${raw.slice(11,13)}`; const r=await fetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,dateTime,notifyMinutesBefore:30,priority:'medium'})}); if(r.ok)added++; }
+      for(const match of events){ const title=match[1].match(/SUMMARY:(.*)/)?.[1]?.trim(); const raw=match[1].match(/DTSTART[^:]*:(\d{8}T\d{6})/)?.[1]; if(!title||!raw)continue; const dateTime=`${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}T${raw.slice(9,11)}:${raw.slice(11,13)}`; const r=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,dateTime,notifyMinutesBefore:30,priority:'medium'})}); if(r.ok)added++; }
       input.value=''; await load(); alert(`${added}件の予定を読み込みました。`);
     }
     function openGoalModal() { document.querySelector('#goalModal').classList.add('open'); }
@@ -563,8 +570,10 @@
       const title = document.querySelector('#goalTitle').value.trim();
       const requirements = document.querySelector('#goalRequirements').value.trim();
       if (!title || !lastGoalPlan) return alert('先にAIへ計画を相談してください。');
+      const previousGoals=readCache('goalsCache');
+      writeCache('goalsCache', [{id:-Date.now(),title,requirements,plan:lastGoalPlan}, ...previousGoals]);
       const response = await fetch('/api/goals', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, requirements, plan:lastGoalPlan}) });
-      if (!response.ok) return alert('目標を保存できませんでした。');
+      if (!response.ok) { writeCache('goalsCache',previousGoals); return alert('目標を保存できませんでした。'); }
       alert('目標を開始しました！ 次はこの計画を毎日のTodoにしていきましょう。');
       closeGoalModal(); document.querySelector('#goalTitle').value = ''; document.querySelector('#goalRequirements').value = '';
       document.querySelector('#proposalResult').style.display = 'none'; document.querySelector('#startGoalButton').style.display = 'none'; lastGoalPlan = ''; load();
@@ -580,6 +589,7 @@
     }
     async function deleteGoal(id) {
       if (!confirm('この目標と関連するTodoを削除しますか？')) return;
+      writeCache('goalsCache', readCache('goalsCache').filter(item=>item.id!==id));
       const result = await (await fetch(`/api/goals/${id}`, {method:'DELETE'})).json();
       alert(result.message); load();
     }
@@ -587,7 +597,7 @@
     document.addEventListener('DOMContentLoaded', async () => {
       document.querySelector('#assistantTone').value = localStorage.getItem('assistantTone') || 'friendly';
       updateNotificationStatus();
-      setCurrentTime(); renderRoutines(); renderMaterials();
+      setCurrentTime(); routinesCache=readCache('routinesCache'); renderRoutines(); renderMaterials();
       try { await load(); } finally { document.querySelector('#loading').classList.add('hidden'); }
       setInterval(checkScheduleReminders, 60000);
       setInterval(checkBreakSuggestion, 60000);

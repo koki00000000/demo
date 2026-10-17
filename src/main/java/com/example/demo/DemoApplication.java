@@ -26,17 +26,20 @@ public class DemoApplication {
     private final AiNotificationRepository notificationRepository;
     private final GoalRepository goalRepository;
     private final TodoRepository todoRepository;
+    private final RoutineRepository routineRepository;
     private final NotificationService notificationService;
 
     public DemoApplication(ScheduleRepository scheduleRepository,
             AiNotificationRepository notificationRepository,
             GoalRepository goalRepository,
             TodoRepository todoRepository,
+            RoutineRepository routineRepository,
             NotificationService notificationService) {
         this.scheduleRepository = scheduleRepository;
         this.notificationRepository = notificationRepository;
         this.goalRepository = goalRepository;
         this.todoRepository = todoRepository;
+        this.routineRepository = routineRepository;
         this.notificationService = notificationService;
 
         if (scheduleRepository.count() == 0) {
@@ -49,18 +52,18 @@ public class DemoApplication {
         SpringApplication.run(DemoApplication.class, args);
     }
 
-    @GetMapping("/api/schedules")
+    @GetMapping({"/api/schedules", "/api/events"})
     public List<Schedule> schedules() {
         return scheduleRepository.findAll();
     }
 
-    @PostMapping("/api/schedules")
+    @PostMapping({"/api/schedules", "/api/events"})
     public Schedule addSchedule(@RequestBody ScheduleRequest request) {
         return scheduleRepository.save(new Schedule(
                 request.title(), request.dateTime(), request.notifyMinutesBefore(), request.priority()));
     }
 
-    @PatchMapping("/api/schedules/{id}/time")
+    @PatchMapping({"/api/schedules/{id}/time", "/api/events/{id}/time"})
     public Schedule moveSchedule(@org.springframework.web.bind.annotation.PathVariable Long id,
             @RequestBody MoveScheduleRequest request) {
         Schedule schedule = scheduleRepository.findById(id)
@@ -69,7 +72,7 @@ public class DemoApplication {
         return scheduleRepository.save(schedule);
     }
 
-    @DeleteMapping("/api/schedules/{id}")
+    @DeleteMapping({"/api/schedules/{id}", "/api/events/{id}"})
     public Map<String, String> deleteSchedule(@org.springframework.web.bind.annotation.PathVariable Long id) {
         if (!scheduleRepository.existsById(id)) {
             return Map.of("message", "予定が見つかりませんでした。");
@@ -179,6 +182,30 @@ public class DemoApplication {
         return todoRepository.save(todo);
     }
 
+    @GetMapping("/api/routines")
+    public List<Routine> routines() {
+        return routineRepository.findAll();
+    }
+
+    @PostMapping("/api/routines")
+    public Routine addRoutine(@RequestBody RoutineRequest request) {
+        return routineRepository.save(new Routine(request.title()));
+    }
+
+    @PatchMapping("/api/routines/{id}/complete")
+    public Routine toggleRoutine(@org.springframework.web.bind.annotation.PathVariable Long id) {
+        Routine routine = routineRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("ルーティンが見つかりません。"));
+        routine.setCompleted(!routine.isCompleted());
+        return routineRepository.save(routine);
+    }
+
+    @DeleteMapping("/api/routines/{id}")
+    public Map<String, String> deleteRoutine(@org.springframework.web.bind.annotation.PathVariable Long id) {
+        routineRepository.deleteById(id);
+        return Map.of("message", "ルーティンを削除しました。");
+    }
+
     public record ScheduleRequest(String title, LocalDateTime dateTime, int notifyMinutesBefore, String priority) {
     }
 
@@ -195,4 +222,5 @@ public class DemoApplication {
 
     public record ReverseScheduleRequest(String todoTitle, String tone) {}
     public record ChatRequest(String message, String tone) {}
+    public record RoutineRequest(String title) {}
 }
