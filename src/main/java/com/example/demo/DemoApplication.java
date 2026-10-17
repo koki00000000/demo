@@ -57,7 +57,16 @@ public class DemoApplication {
     @PostMapping("/api/schedules")
     public Schedule addSchedule(@RequestBody ScheduleRequest request) {
         return scheduleRepository.save(new Schedule(
-                request.title(), request.dateTime(), request.notifyMinutesBefore()));
+                request.title(), request.dateTime(), request.notifyMinutesBefore(), request.priority()));
+    }
+
+    @PatchMapping("/api/schedules/{id}/time")
+    public Schedule moveSchedule(@org.springframework.web.bind.annotation.PathVariable Long id,
+            @RequestBody MoveScheduleRequest request) {
+        Schedule schedule = scheduleRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("予定が見つかりません。"));
+        schedule.setDateTime(request.dateTime());
+        return scheduleRepository.save(schedule);
     }
 
     @DeleteMapping("/api/schedules/{id}")
@@ -105,7 +114,7 @@ public class DemoApplication {
             throw new IllegalArgumentException("画像は10MB以下にしてください。");
         }
         return notificationService.readSchedulesFromImage(image.getBytes(), image.getContentType()).stream()
-                .map(item -> scheduleRepository.save(new Schedule(item.title(), item.dateTime(), 30)))
+                .map(item -> scheduleRepository.save(new Schedule(item.title(), item.dateTime(), 30, "medium")))
                 .toList();
     }
 
@@ -170,8 +179,10 @@ public class DemoApplication {
         return todoRepository.save(todo);
     }
 
-    public record ScheduleRequest(String title, LocalDateTime dateTime, int notifyMinutesBefore) {
+    public record ScheduleRequest(String title, LocalDateTime dateTime, int notifyMinutesBefore, String priority) {
     }
+
+    public record MoveScheduleRequest(LocalDateTime dateTime) {}
 
     public record GoalPlanRequest(String title, String requirements) {
     }

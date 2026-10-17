@@ -26,7 +26,9 @@
     .calendar-day.today { border:2px solid #2764d9; }
     .calendar-day.empty { border:0; background:transparent; cursor:default; }
     .calendar-event { display:block; margin-top:4px; padding:2px 4px; border-radius:4px; background:#e8eefb; color:#2454aa; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .assistant-panel { display:flex; align-items:flex-start; gap:14px; background:linear-gradient(135deg,#f7f3ff,#eef5ff); }
+    .assistant-panel { position:fixed; right:20px; bottom:82px; z-index:20; width:min(380px,calc(100vw - 40px)); max-height:72vh; overflow:auto; display:flex; align-items:flex-start; gap:14px; background:linear-gradient(135deg,#f7f3ff,#eef5ff); transform:translateX(calc(100% + 40px)); opacity:0; transition:.25s ease; }
+    .assistant-panel.open { transform:translateX(0); opacity:1; }
+    .assistant-toggle { position:fixed; right:20px; bottom:20px; z-index:21; border-radius:999px; box-shadow:0 5px 22px #173b7a55; }
     .assistant-avatar { flex:0 0 52px; width:52px; height:52px; display:grid; place-items:center; border-radius:50%; background:#fff; box-shadow:0 2px 10px #20304018; font-size:28px; }
     .assistant-content { min-width:0; flex:1; }
     .assistant-content h2 { margin:0 0 8px; font-size:18px; }
@@ -40,18 +42,36 @@
     .modal-head { display:flex; justify-content:space-between; align-items:start; gap:16px; } .modal-head h2 { margin:0; }
     .guide { background:#f3f7ff; border-left:4px solid #4f7dd9; padding:14px; border-radius:7px; line-height:1.7; }
     #proposalResult { display:none; white-space:pre-wrap; background:#f7f3ff; border-left:4px solid #7a55e8; padding:16px; border-radius:7px; line-height:1.7; margin-top:16px; }
+    .quick-times { display:flex; flex-wrap:wrap; gap:7px; margin:8px 0; }
+    .quick-times button { padding:7px 10px; }
+    .priority-high { border-left:5px solid #e5484d; } .priority-medium { border-left:5px solid #e5a000; } .priority-low { border-left:5px solid #2f9e62; }
+    .loading { position:fixed; inset:0; z-index:100; display:grid; place-items:center; background:#f6f8fcee; transition:.25s; }
+    .loading.hidden { opacity:0; pointer-events:none; }
+    .loading-card { padding:24px 30px; border-radius:16px; background:#fff; box-shadow:0 10px 40px #20304022; text-align:center; }
+    .spinner { width:32px; height:32px; margin:0 auto 12px; border:4px solid #dce6fa; border-top-color:#2764d9; border-radius:50%; animation:spin .8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .routine-row,.material-row { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid #edf0f5; }
+    @media (max-width:600px) {
+      body { margin:16px auto; padding:0 12px; }
+      .assistant-panel { right:0; bottom:0; width:auto; max-height:82vh; border-radius:18px 18px 0 0; transform:translateY(105%); }
+      .assistant-panel.open { transform:translateY(0); }
+      .assistant-toggle { right:14px; bottom:14px; }
+      input[type=datetime-local] { width:100%; }
+      .calendar-day { min-height:62px; padding:4px; }
+    }
   </style>
 </head>
 <body>
+  <div id="loading" class="loading"><div class="loading-card"><div class="spinner"></div><b>AI秘書を準備中...</b><p class="small">スリープからの復帰には少し時間がかかることがあります</p></div></div>
   <header>
     <div><h1>AI予定秘書</h1><p class="hint">予定の少し前に、AIが準備を手伝う通知を作ります。</p></div>
     <button onclick="openGoalModal()">＋ 目標を作る</button>
   </header>
 
-  <section class="assistant-panel" aria-live="polite">
+  <section id="assistantPanel" class="assistant-panel" aria-live="polite">
     <div class="assistant-avatar" role="img" aria-label="AI秘書のアイコン">🤖</div>
     <div class="assistant-content">
-      <h2>AI秘書</h2>
+      <div class="calendar-head"><h2>AI秘書</h2><button class="close" onclick="toggleAssistant(false)" aria-label="閉じる">×</button></div>
       <p id="assistantMessage" class="assistant-bubble">今日の予定を一緒に整えましょう。予定を追加すると、準備のヒントをお伝えします。</p>
       <a id="assistantLink" href="#" target="_blank" rel="noopener" hidden></a>
       <label class="assistant-settings">口調
@@ -67,6 +87,7 @@
       </div>
     </div>
   </section>
+  <button class="assistant-toggle" onclick="toggleAssistant()">🤖 AIに相談</button>
 
   <section>
     <h2>進行中の目標</h2>
@@ -97,7 +118,16 @@
     <h2>予定を追加</h2>
     <input id="title" type="text" placeholder="例：Java Silverの勉強">
     <input id="dateTime" type="datetime-local">
+    <div class="quick-times">
+      <button class="secondary" onclick="setCurrentTime()">現在時刻</button>
+      <button class="secondary" onclick="addMinutes(15)">＋15分</button>
+      <button class="secondary" onclick="addMinutes(30)">＋30分</button>
+      <button class="secondary" onclick="setQuickTime(9)">09:00</button>
+      <button class="secondary" onclick="setQuickTime(12)">12:00</button>
+      <button class="secondary" onclick="setQuickTime(18)">18:00</button>
+    </div>
     <input id="minutes" type="number" min="1" value="30"> 分前に通知
+    <label>優先度 <select id="priority"><option value="high">高</option><option value="medium" selected>中</option><option value="low">低</option></select></label>
     <button onclick="addSchedule()">追加</button>
     <div class="inline-tools">
       <label><b>スクショから予定追加：</b><input id="scheduleImage" type="file" accept="image/*" onchange="analyzeScheduleImage(this)"></label>
@@ -105,6 +135,27 @@
     </div>
   </section>
   <section><h2>予定</h2><ul id="schedules"></ul></section>
+  <section>
+    <h2>毎日のルーティン</h2>
+    <div class="inline-tools"><input id="routineInput" type="text" placeholder="例：英単語を10分復習"><button onclick="addRoutine()">追加</button></div>
+    <div id="routines"></div>
+  </section>
+  <section>
+    <h2>授業・課題メモ</h2>
+    <input id="materialTitle" type="text" placeholder="授業名・課題名">
+    <textarea id="materialMemo" placeholder="課題内容や提出期限など"></textarea>
+    <div class="inline-tools"><input id="materialFile" type="file" accept="application/pdf,text/plain"><button onclick="saveMaterial()">保存</button></div>
+    <div id="materials"></div>
+  </section>
+  <section>
+    <h2>予定の整理・カレンダー連携</h2>
+    <div class="inline-tools">
+      <button onclick="compressSchedules()">重なった予定を自動再配置</button>
+      <button class="secondary" onclick="exportIcs()">iCal（.ics）を書き出す</button>
+      <label class="secondary">.icsを読み込む <input type="file" accept=".ics,text/calendar" onchange="importIcs(this)"></label>
+    </div>
+    <p class="small">書き出した.icsはGoogleカレンダーの「インポート」から読み込めます。自動再配置は同時刻の予定を1時間ずつ後ろへ移動します。</p>
+  </section>
   <section>
     <h2>ブラウザ通知</h2>
     <div class="notification-settings">
@@ -137,6 +188,29 @@
     let lastReminderCheck = Date.now() - 60000;
     let nextBreakSuggestionAt = Date.now() + 50 * 60000;
     let reverseProposal = null;
+
+    function toggleAssistant(force) {
+      const panel = document.querySelector('#assistantPanel');
+      panel.classList.toggle('open', force === undefined ? !panel.classList.contains('open') : force);
+    }
+
+    function toLocalInput(date) {
+      const pad = value => String(value).padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    function setCurrentTime() { document.querySelector('#dateTime').value = toLocalInput(new Date()); }
+    function addMinutes(minutes) {
+      const input = document.querySelector('#dateTime');
+      const date = input.value ? new Date(input.value) : new Date();
+      date.setMinutes(date.getMinutes() + minutes);
+      input.value = toLocalInput(date);
+    }
+    function setQuickTime(hour) {
+      const input = document.querySelector('#dateTime');
+      const date = input.value ? new Date(input.value) : new Date();
+      date.setHours(hour, 0, 0, 0); input.value = toLocalInput(date);
+    }
 
     const currentTone = () => document.querySelector('#assistantTone').value;
 
@@ -200,6 +274,7 @@
       const message = input.value.trim();
       if (!message) return;
       setAssistantMessage('考えています…');
+      toggleAssistant(true);
       try {
         const response = await fetch('/api/assistant/chat', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message, tone:currentTone()})});
         if (!response.ok) throw new Error();
@@ -260,6 +335,15 @@
       return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
     }
 
+    function transitLinks(title) {
+      const route = title.match(/(.+?駅)\s*(?:➔|→|から)\s*(.+?駅)/);
+      if (!route) return '';
+      const origin=encodeURIComponent(route[1]); const destination=encodeURIComponent(route[2]);
+      const google=`https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=transit`;
+      const yahoo=`https://transit.yahoo.co.jp/search/result?from=${origin}&to=${destination}`;
+      return `<br><a href="${google}" target="_blank" rel="noopener">Google Maps</a> ・ <a href="${yahoo}" target="_blank" rel="noopener">Yahoo!乗換案内</a>`;
+    }
+
     function renderCalendar() {
       const year = calendarMonth.getFullYear();
       const month = calendarMonth.getMonth();
@@ -273,7 +357,7 @@
       for (let day = 1; day <= lastDay; day++) {
         const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const events = schedulesCache.filter(schedule => localDateKey(schedule.dateTime) === dateKey);
-        html += `<button class="calendar-day ${dateKey === todayKey ? 'today' : ''}" onclick="selectCalendarDate('${dateKey}')"><b>${day}</b>${events.map(event => `<span class="calendar-event">${event.title}</span>`).join('')}</button>`;
+        html += `<button class="calendar-day ${dateKey === todayKey ? 'today' : ''}" onclick="selectCalendarDate('${dateKey}')"><b>${day}</b>${events.map(event => `<span class="calendar-event priority-${event.priority || 'medium'}">${event.title}</span>`).join('')}</button>`;
       }
       document.querySelector('#calendar').innerHTML = html;
     }
@@ -333,7 +417,7 @@
       if (schedules) {
         schedulesCache = schedules;
         document.querySelector('#schedules').innerHTML = schedules.map(s =>
-        `<li><b>${s.title}</b><br><span class="small">${format(s.dateTime)} の ${s.notifyMinutesBefore}分前に通知</span><br><button class="secondary" onclick="deleteSchedule(${s.id})">削除</button></li>`).join('') || '<li>予定はまだありません。</li>';
+        `<li class="priority-${s.priority || 'medium'}"><b>${s.title}</b><br><span class="small">${format(s.dateTime)}／優先度：${{high:'高',medium:'中',low:'低'}[s.priority || 'medium']}／${s.notifyMinutesBefore}分前に通知</span>${transitLinks(s.title)}<br><button class="secondary" onclick="deleteSchedule(${s.id})">削除</button></li>`).join('') || '<li>予定はまだありません。</li>';
         renderCalendar();
       }
     }
@@ -341,8 +425,9 @@
       const title = document.querySelector('#title').value.trim();
       const dateTime = document.querySelector('#dateTime').value;
       const notifyMinutesBefore = Number(document.querySelector('#minutes').value);
+      const priority = document.querySelector('#priority').value;
       if (!title || !dateTime || notifyMinutesBefore < 1) return alert('予定名・日時・通知する分数を入力してください。');
-      const response = await fetch('/api/schedules', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, dateTime, notifyMinutesBefore}) });
+      const response = await fetch('/api/schedules', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, dateTime, notifyMinutesBefore, priority}) });
       if (!response.ok) return alert('予定を保存できませんでした。アプリの起動状態を確認してください。');
       document.querySelector('#title').value = '';
       await load();
@@ -388,11 +473,64 @@
     }
     async function addReverseProposal() {
       if (!reverseProposal) return;
-      const response = await fetch('/api/schedules', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:reverseProposal.title, dateTime:reverseProposal.dateTime, notifyMinutesBefore:30})});
+      const response = await fetch('/api/schedules', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:reverseProposal.title, dateTime:reverseProposal.dateTime, notifyMinutesBefore:30, priority:'medium'})});
       if (!response.ok) return alert('予定を保存できませんでした。');
       document.querySelector('#reverseProposal').style.display = 'none';
       setAssistantMessage('カレンダーへ追加しました。開始30分前に通知します。');
       reverseProposal = null; await load();
+    }
+    function routineState() {
+      const saved = JSON.parse(localStorage.getItem('dailyRoutines') || '[]');
+      const today = localDateKey(new Date());
+      return saved.map(item => item.date === today ? item : {...item, done:false, date:today});
+    }
+    function renderRoutines() {
+      const items = routineState(); localStorage.setItem('dailyRoutines', JSON.stringify(items));
+      document.querySelector('#routines').innerHTML = items.map((item,index) => `<div class="routine-row"><input type="checkbox" ${item.done?'checked':''} onchange="toggleRoutine(${index})"><span>${item.title}</span><button class="secondary" onclick="deleteRoutine(${index})">削除</button></div>`).join('') || '<p class="small">ルーティンはまだありません。</p>';
+    }
+    function addRoutine() {
+      const input = document.querySelector('#routineInput'); if (!input.value.trim()) return;
+      const items = routineState(); items.push({title:input.value.trim(),done:false,date:localDateKey(new Date())});
+      localStorage.setItem('dailyRoutines', JSON.stringify(items)); input.value=''; renderRoutines();
+    }
+    function toggleRoutine(index) { const items=routineState(); items[index].done=!items[index].done; localStorage.setItem('dailyRoutines',JSON.stringify(items)); renderRoutines(); }
+    function deleteRoutine(index) { const items=routineState(); items.splice(index,1); localStorage.setItem('dailyRoutines',JSON.stringify(items)); renderRoutines(); }
+
+    const materialsDb = new Promise((resolve,reject) => {
+      const request=indexedDB.open('aiScheduler',1);
+      request.onupgradeneeded=()=>request.result.createObjectStore('materials',{keyPath:'id',autoIncrement:true});
+      request.onsuccess=()=>resolve(request.result); request.onerror=()=>reject(request.error);
+    });
+    async function materialStore(mode='readonly') { const db=await materialsDb; return db.transaction('materials',mode).objectStore('materials'); }
+    async function saveMaterial() {
+      const title=document.querySelector('#materialTitle').value.trim(); const memo=document.querySelector('#materialMemo').value.trim(); const file=document.querySelector('#materialFile').files[0] || null;
+      if (!title && !memo && !file) return alert('授業名、メモ、またはファイルを入力してください。');
+      const store=await materialStore('readwrite'); store.add({title:title || file.name,memo,file,name:file?.name || ''}); store.transaction.oncomplete=renderMaterials;
+      document.querySelector('#materialTitle').value=''; document.querySelector('#materialMemo').value=''; document.querySelector('#materialFile').value='';
+    }
+    async function renderMaterials() {
+      const store=await materialStore(); const request=store.getAll(); request.onsuccess=()=>document.querySelector('#materials').innerHTML=request.result.map(item=>`<div class="material-row"><div><b>${item.title}</b><br><span class="small">${item.memo || ''} ${item.name || ''}</span></div>${item.file?`<button class="secondary" onclick="openMaterial(${item.id})">開く</button>`:''}<button class="secondary" onclick="deleteMaterial(${item.id})">削除</button></div>`).join('') || '<p class="small">教材・メモはまだありません。</p>';
+    }
+    async function openMaterial(id) { const store=await materialStore(); const r=store.get(id); r.onsuccess=()=>window.open(URL.createObjectURL(r.result.file),'_blank'); }
+    async function deleteMaterial(id) { const store=await materialStore('readwrite'); store.delete(id); store.transaction.oncomplete=renderMaterials; }
+
+    async function compressSchedules() {
+      const sorted=[...schedulesCache].sort((a,b)=>new Date(a.dateTime)-new Date(b.dateTime)); const moves=[];
+      for(let i=1;i<sorted.length;i++) { const previous=new Date(sorted[i-1].dateTime); const current=new Date(sorted[i].dateTime); const next=new Date(previous.getTime()+60*60000); if(localDateKey(previous)===localDateKey(current) && current<next){ sorted[i].dateTime=toLocalInput(next); moves.push(sorted[i]); } }
+      if(!moves.length) return alert('重なっている予定はありません。');
+      if(!confirm(`${moves.length}件の予定を前の予定から1時間後へ移動しますか？`)) return;
+      await Promise.all(moves.map(item=>fetch(`/api/schedules/${item.id}/time`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateTime:item.dateTime})}))); await load();
+    }
+    function icsDate(value) { return toLocalInput(new Date(value)).replace(/[-:]/g,'').replace('T','T')+'00'; }
+    function exportIcs() {
+      const escape=value=>String(value).replace(/([,;\\])/g,'\\$1').replace(/\n/g,'\\n');
+      const body=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//AI Scheduler//JA',...schedulesCache.flatMap(s=>['BEGIN:VEVENT',`UID:${s.id}@ai-scheduler`,`DTSTART:${icsDate(s.dateTime)}`,`SUMMARY:${escape(s.title)}`,'END:VEVENT']),'END:VCALENDAR'].join('\r\n');
+      const link=document.createElement('a'); link.href=URL.createObjectURL(new Blob([body],{type:'text/calendar'})); link.download='ai-scheduler.ics'; link.click(); URL.revokeObjectURL(link.href);
+    }
+    async function importIcs(input) {
+      const file=input.files[0]; if(!file)return; const text=await file.text(); const events=[...text.matchAll(/BEGIN:VEVENT([\s\S]*?)END:VEVENT/g)]; let added=0;
+      for(const match of events){ const title=match[1].match(/SUMMARY:(.*)/)?.[1]?.trim(); const raw=match[1].match(/DTSTART[^:]*:(\d{8}T\d{6})/)?.[1]; if(!title||!raw)continue; const dateTime=`${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}T${raw.slice(9,11)}:${raw.slice(11,13)}`; const r=await fetch('/api/schedules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,dateTime,notifyMinutesBefore:30,priority:'medium'})}); if(r.ok)added++; }
+      input.value=''; await load(); alert(`${added}件の予定を読み込みました。`);
     }
     function openGoalModal() { document.querySelector('#goalModal').classList.add('open'); }
     function closeGoalModal() { document.querySelector('#goalModal').classList.remove('open'); }
@@ -437,7 +575,8 @@
     document.addEventListener('DOMContentLoaded', async () => {
       document.querySelector('#assistantTone').value = localStorage.getItem('assistantTone') || 'friendly';
       updateNotificationStatus();
-      await load();
+      setCurrentTime(); renderRoutines(); renderMaterials();
+      try { await load(); } finally { document.querySelector('#loading').classList.add('hidden'); }
       setInterval(checkScheduleReminders, 60000);
       setInterval(checkBreakSuggestion, 60000);
     });
