@@ -10,7 +10,7 @@
     header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
     h1 { margin:0 0 4px; } .hint,.small { color:#687386; } .hint { margin-top:0; }
     section { background:#fff; border-radius:14px; padding:22px; margin:18px 0; box-shadow:0 2px 10px #20304012; }
-    input, textarea { box-sizing:border-box; padding:10px; margin:5px 0; border:1px solid #ccd3df; border-radius:8px; font:inherit; }
+    input, textarea, select { box-sizing:border-box; padding:10px; margin:5px 0; border:1px solid #ccd3df; border-radius:8px; font:inherit; }
     input[type=text], textarea { width:100%; } input[type=datetime-local] { width:68%; } input[type=number] { width:28%; }
     textarea { min-height:150px; resize:vertical; line-height:1.6; }
     button { padding:10px 14px; border:0; border-radius:8px; background:#2764d9; color:#fff; cursor:pointer; font-weight:700; font-size:15px; }
@@ -32,6 +32,9 @@
     .assistant-content h2 { margin:0 0 8px; font-size:18px; }
     .assistant-bubble { position:relative; margin:0; padding:13px 15px; border-radius:4px 14px 14px 14px; background:#fff; line-height:1.65; white-space:pre-wrap; }
     #assistantLink { display:inline-block; margin-top:8px; color:#2454aa; font-weight:700; }
+    .assistant-settings { display:flex; align-items:center; gap:8px; margin-top:10px; }
+    .inline-tools { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:14px; }
+    #reverseProposal { display:none; margin-top:14px; padding:14px; border-radius:9px; background:#eef5ff; }
     .modal { display:none; position:fixed; inset:0; z-index:10; background:#1c243466; padding:24px; overflow:auto; }
     .modal.open { display:block; } .modal-card { max-width:680px; margin:42px auto; background:#fff; border-radius:18px; padding:28px; box-shadow:0 12px 40px #0004; }
     .modal-head { display:flex; justify-content:space-between; align-items:start; gap:16px; } .modal-head h2 { margin:0; }
@@ -51,6 +54,17 @@
       <h2>AI秘書</h2>
       <p id="assistantMessage" class="assistant-bubble">今日の予定を一緒に整えましょう。予定を追加すると、準備のヒントをお伝えします。</p>
       <a id="assistantLink" href="#" target="_blank" rel="noopener" hidden></a>
+      <label class="assistant-settings">口調
+        <select id="assistantTone" onchange="changeAssistantTone()">
+          <option value="strict">厳格（しっかり者）</option>
+          <option value="gentle">優しい</option>
+          <option value="friendly">親しみやすい</option>
+        </select>
+      </label>
+      <div class="inline-tools">
+        <input id="assistantQuestion" type="text" placeholder="予定やTodoをAI秘書に相談">
+        <button class="secondary" onclick="askAssistant()">相談する</button>
+      </div>
     </div>
   </section>
 
@@ -63,6 +77,10 @@
     <h2>今日のTodo</h2>
     <p class="small">目標の「今日のTodoを作る」から、AIに小さな行動を作ってもらえます。</p>
     <div id="todos"><p class="small">今日のTodoはまだありません。</p></div>
+    <div id="reverseProposal">
+      <p id="reverseMessage"></p>
+      <button onclick="addReverseProposal()">この時間でカレンダーに追加</button>
+    </div>
   </section>
 
   <section>
@@ -81,6 +99,10 @@
     <input id="dateTime" type="datetime-local">
     <input id="minutes" type="number" min="1" value="30"> 分前に通知
     <button onclick="addSchedule()">追加</button>
+    <div class="inline-tools">
+      <label><b>スクショから予定追加：</b><input id="scheduleImage" type="file" accept="image/*" onchange="analyzeScheduleImage(this)"></label>
+      <span id="imageStatus" class="small"></span>
+    </div>
   </section>
   <section><h2>予定</h2><ul id="schedules"></ul></section>
   <section>
@@ -114,6 +136,22 @@
     let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     let lastReminderCheck = Date.now() - 60000;
     let nextBreakSuggestionAt = Date.now() + 50 * 60000;
+    let reverseProposal = null;
+
+    const currentTone = () => document.querySelector('#assistantTone').value;
+
+    function toneText(strict, gentle, friendly) {
+      return currentTone() === 'strict' ? strict : currentTone() === 'gentle' ? gentle : friendly;
+    }
+
+    function changeAssistantTone() {
+      localStorage.setItem('assistantTone', currentTone());
+      setAssistantMessage(toneText(
+        '設定しました。予定と優先順位を明確にして、着実に進めましょう。',
+        '設定しました。無理のないペースで、一緒に進めていきましょうね。',
+        '設定したよ！今日もいい感じに進めていこう🙌'
+      ));
+    }
 
     function setAssistantMessage(message, linkText = '', linkUrl = '') {
       document.querySelector('#assistantMessage').textContent = message;
@@ -124,27 +162,50 @@
     }
 
     function fallbackScheduleAdvice(title) {
+      const transit = /(.+駅)\s*(?:➔|→|から)\s*(.+駅)/.test(title);
+      if (transit) return toneText(
+        '移動予定を確認しました。正確な所要時間と乗り換えは、出発前に経路検索で必ず確認してください。',
+        '移動の予定ですね。遅れないよう、所要時間と乗り換えを経路検索で確認しておくと安心です🚃',
+        '電車移動だね！乗り換えと所要時間をGoogle Mapsで先に見ておこう🚃'
+      );
       if (/勉強|数学|英語|Java|資格|試験|課題|復習/i.test(title)) {
-        return 'この範囲は集中力を使いそうです！最初の10分で取り組む範囲を決めて、サクッと始めましょう💪';
+        return toneText('最初の10分で範囲を決め、集中して完了させましょう。', 'この範囲は集中力を使いそうです。無理せず小さく区切って進めましょうね。', '最初の10分で範囲を決めて、サクッと始めよう💪');
       }
       if (/カフェ|外出|買い物|旅行|ランチ|食事/i.test(title)) {
-        return '良い時間になりそうですね！移動時間や持ち物、予算感も先に確認しておくと安心です☕';
+        return toneText('移動時間・持ち物・予算を事前に確認してください。', '良い時間になりそうですね。移動時間や持ち物を確認しておくと安心です☕', '楽しみだね！移動時間と予算を先にチェックしておこう☕');
       }
-      return `「${title}」、いいですね！少し早めに準備を始めて、気持ちよく取り組みましょう✨`;
+      return toneText(`「${title}」の準備を早めに始め、確実に実行しましょう。`, `「${title}」、いいですね。少し早めに準備して、ゆっくり取り組みましょう。`, `「${title}」、いいね！少し早めに準備して気持ちよく始めよう✨`);
     }
 
     async function showScheduleAdvice(title) {
       setAssistantMessage(fallbackScheduleAdvice(title));
       try {
         const response = await fetch('/api/assistant/advice', {
-          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title})
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, tone:currentTone()})
         });
         if (!response.ok) return;
         const data = await response.json();
-        if (data.message && !data.message.includes('混雑しています')) setAssistantMessage(data.message);
+        if (data.message && !data.message.includes('混雑しています')) {
+          const route = title.match(/(.+?駅)\s*(?:➔|→|から)\s*(.+?駅)/);
+          const routeUrl = route ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(route[1])}&destination=${encodeURIComponent(route[2])}&travelmode=transit` : '';
+          setAssistantMessage(data.message, route ? 'Google Mapsで経路を確認' : '', routeUrl);
+        }
       } catch (_) {
         // APIに接続できない場合も、先に表示した定型コメントをそのまま使う。
       }
+    }
+
+    async function askAssistant() {
+      const input = document.querySelector('#assistantQuestion');
+      const message = input.value.trim();
+      if (!message) return;
+      setAssistantMessage('考えています…');
+      try {
+        const response = await fetch('/api/assistant/chat', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message, tone:currentTone()})});
+        if (!response.ok) throw new Error();
+        const data = await response.json();
+        setAssistantMessage(data.message); input.value = '';
+      } catch (_) { setAssistantMessage('相談に答えられませんでした。少し待ってから、もう一度試してください。'); }
     }
 
     function checkBreakSuggestion() {
@@ -268,7 +329,7 @@
   </button>
 </div>`).join('') || '<p class="small">目標はまだありません。</p>';
       if (todos) document.querySelector('#todos').innerHTML = todos.map(t =>
-        `<p><label><input type="checkbox" ${t.completed ? 'checked' : ''} onchange="toggleTodo(${t.id})"> <span style="${t.completed ? 'text-decoration:line-through;color:#687386' : ''}">${t.title}</span></label></p>`).join('') || '<p class="small">今日のTodoはまだありません。</p>';
+        `<p><label><input type="checkbox" ${t.completed ? 'checked' : ''} onchange="toggleTodo(${t.id})"> <span style="${t.completed ? 'text-decoration:line-through;color:#687386' : ''}">${t.title}</span></label> <button class="secondary" onclick="createReverseSchedule('${encodeURIComponent(t.title)}', this)">逆算スケジュール作成</button></p>`).join('') || '<p class="small">今日のTodoはまだありません。</p>';
       if (schedules) {
         schedulesCache = schedules;
         document.querySelector('#schedules').innerHTML = schedules.map(s =>
@@ -291,6 +352,47 @@
       if (!confirm('この予定を削除しますか？')) return;
       const result = await (await fetch(`/api/schedules/${id}`, {method:'DELETE'})).json();
       alert(result.message); load();
+    }
+    async function analyzeScheduleImage(input) {
+      const file = input.files[0];
+      if (!file) return;
+      const status = document.querySelector('#imageStatus');
+      if (file.size > 10 * 1024 * 1024) { input.value = ''; return alert('画像は10MB以下にしてください。'); }
+      status.textContent = 'AIが画像を読み取っています…';
+      const form = new FormData(); form.append('image', file);
+      try {
+        const response = await fetch('/api/assistant/image-schedules', {method:'POST', body:form});
+        if (!response.ok) throw new Error();
+        const added = await response.json();
+        if (!added.length) throw new Error();
+        await load();
+        setAssistantMessage(`${added.length}件の予定を画像から追加しました。日時が正しいかカレンダーで確認してください。`);
+        status.textContent = `${added.length}件追加しました`;
+      } catch (_) {
+        status.textContent = '読み取れませんでした';
+        alert('画像から予定を読み取れませんでした。日時と予定名が見える画像か、Gemini APIの状態を確認してください。');
+      } finally { input.value = ''; }
+    }
+    async function createReverseSchedule(encodedTitle, button) {
+      const todoTitle = decodeURIComponent(encodedTitle);
+      button.disabled = true; button.textContent = 'AIが時間を考えています…';
+      try {
+        const response = await fetch('/api/assistant/reverse-schedule', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({todoTitle, tone:currentTone()})});
+        if (!response.ok) throw new Error();
+        reverseProposal = await response.json();
+        document.querySelector('#reverseMessage').textContent = `${reverseProposal.message}\n${format(reverseProposal.dateTime)}「${reverseProposal.title}」`;
+        document.querySelector('#reverseProposal').style.display = 'block';
+        setAssistantMessage(reverseProposal.message);
+      } catch (_) { alert('逆算スケジュールを作れませんでした。'); }
+      finally { button.disabled = false; button.textContent = '逆算スケジュール作成'; }
+    }
+    async function addReverseProposal() {
+      if (!reverseProposal) return;
+      const response = await fetch('/api/schedules', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:reverseProposal.title, dateTime:reverseProposal.dateTime, notifyMinutesBefore:30})});
+      if (!response.ok) return alert('予定を保存できませんでした。');
+      document.querySelector('#reverseProposal').style.display = 'none';
+      setAssistantMessage('カレンダーへ追加しました。開始30分前に通知します。');
+      reverseProposal = null; await load();
     }
     function openGoalModal() { document.querySelector('#goalModal').classList.add('open'); }
     function closeGoalModal() { document.querySelector('#goalModal').classList.remove('open'); }
@@ -333,6 +435,7 @@
     }
     async function toggleTodo(id) { await fetch(`/api/todos/${id}/complete`, {method:'PATCH'}); load(); }
     document.addEventListener('DOMContentLoaded', async () => {
+      document.querySelector('#assistantTone').value = localStorage.getItem('assistantTone') || 'friendly';
       updateNotificationStatus();
       await load();
       setInterval(checkScheduleReminders, 60000);

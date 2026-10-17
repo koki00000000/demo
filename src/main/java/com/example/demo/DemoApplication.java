@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @SpringBootApplication
 @EnableScheduling
@@ -86,7 +88,30 @@ public class DemoApplication {
 
     @PostMapping("/api/assistant/advice")
     public Map<String, String> scheduleAdvice(@RequestBody ScheduleAdviceRequest request) {
-        return Map.of("message", notificationService.createScheduleAdvice(request.title()));
+        return Map.of("message", notificationService.createScheduleAdvice(request.title(), request.tone()));
+    }
+
+    @PostMapping("/api/assistant/chat")
+    public Map<String, String> assistantChat(@RequestBody ChatRequest request) {
+        return Map.of("message", notificationService.chat(request.message(), request.tone()));
+    }
+
+    @PostMapping("/api/assistant/image-schedules")
+    public List<Schedule> addSchedulesFromImage(@RequestParam("image") MultipartFile image) throws Exception {
+        if (image.isEmpty() || image.getContentType() == null || !image.getContentType().startsWith("image/")) {
+            throw new IllegalArgumentException("画像ファイルを選択してください。");
+        }
+        if (image.getSize() > 10 * 1024 * 1024) {
+            throw new IllegalArgumentException("画像は10MB以下にしてください。");
+        }
+        return notificationService.readSchedulesFromImage(image.getBytes(), image.getContentType()).stream()
+                .map(item -> scheduleRepository.save(new Schedule(item.title(), item.dateTime(), 30)))
+                .toList();
+    }
+
+    @PostMapping("/api/assistant/reverse-schedule")
+    public NotificationService.ReverseSchedule reverseSchedule(@RequestBody ReverseScheduleRequest request) {
+        return notificationService.createReverseSchedule(request.todoTitle(), request.tone());
     }
 
     @PostMapping("/api/goals/plan")
@@ -154,6 +179,9 @@ public class DemoApplication {
     public record StartGoalRequest(String title, String requirements, String plan) {
     }
 
-    public record ScheduleAdviceRequest(String title) {
+    public record ScheduleAdviceRequest(String title, String tone) {
     }
+
+    public record ReverseScheduleRequest(String todoTitle, String tone) {}
+    public record ChatRequest(String message, String tone) {}
 }
