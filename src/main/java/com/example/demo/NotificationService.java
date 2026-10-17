@@ -95,14 +95,18 @@ public class NotificationService {
         String prompt = "画像から予定のタイトルと開始日時を読み取ってください。現在日時は"
                 + LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME) + "です。"
                 + "年がない場合は次に訪れる妥当な日付を推定してください。読み取れない項目を捏造しないでください。"
-                + "JSON配列だけを返してください。形式: [{\"title\":\"予定名\",\"dateTime\":\"yyyy-MM-dd'T'HH:mm\"}]";
+                + "終了日時が画像にない場合は開始の1時間後にしてください。JSON配列だけを返してください。"
+                + "形式: [{\"title\":\"予定名\",\"dateTime\":\"yyyy-MM-dd'T'HH:mm\",\"endDateTime\":\"yyyy-MM-dd'T'HH:mm\"}]";
         JsonNode root = askGeminiImageJson(prompt, image, mimeType);
         List<ParsedSchedule> schedules = new ArrayList<>();
         for (JsonNode item : root.isArray() ? root : root.path("schedules")) {
             String title = item.path("title").asText().trim();
             String dateTime = item.path("dateTime").asText().trim();
+            String endDateTime = item.path("endDateTime").asText().trim();
             if (!title.isEmpty() && !dateTime.isEmpty()) {
-                schedules.add(new ParsedSchedule(title, LocalDateTime.parse(dateTime)));
+                LocalDateTime start = LocalDateTime.parse(dateTime);
+                schedules.add(new ParsedSchedule(title, start,
+                        endDateTime.isEmpty() ? start.plusHours(1) : LocalDateTime.parse(endDateTime)));
             }
         }
         return schedules;
@@ -234,7 +238,7 @@ public class NotificationService {
         };
     }
 
-    public record ParsedSchedule(String title, LocalDateTime dateTime) {}
+    public record ParsedSchedule(String title, LocalDateTime dateTime, LocalDateTime endDateTime) {}
     public record ReverseSchedule(String title, LocalDateTime dateTime, String message) {}
 
     private String postGeminiWithRetry(String cleanApiKey, ObjectNode body) throws Exception {

@@ -60,7 +60,8 @@ public class DemoApplication {
     @PostMapping({"/api/schedules", "/api/events"})
     public Schedule addSchedule(@RequestBody ScheduleRequest request) {
         return scheduleRepository.save(new Schedule(
-                request.title(), request.dateTime(), request.notifyMinutesBefore(), request.priority()));
+                request.title(), request.dateTime(), request.endDateTime(),
+                request.notifyMinutesBefore(), request.priority()));
     }
 
     @PatchMapping({"/api/schedules/{id}/time", "/api/events/{id}/time"})
@@ -69,6 +70,7 @@ public class DemoApplication {
         Schedule schedule = scheduleRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("予定が見つかりません。"));
         schedule.setDateTime(request.dateTime());
+        schedule.setEndDateTime(request.endDateTime());
         return scheduleRepository.save(schedule);
     }
 
@@ -117,7 +119,8 @@ public class DemoApplication {
             throw new IllegalArgumentException("画像は10MB以下にしてください。");
         }
         return notificationService.readSchedulesFromImage(image.getBytes(), image.getContentType()).stream()
-                .map(item -> scheduleRepository.save(new Schedule(item.title(), item.dateTime(), 30, "medium")))
+                .map(item -> scheduleRepository.save(new Schedule(item.title(), item.dateTime(),
+                        item.endDateTime(), 30, "medium")))
                 .toList();
     }
 
@@ -206,10 +209,11 @@ public class DemoApplication {
         return Map.of("message", "ルーティンを削除しました。");
     }
 
-    public record ScheduleRequest(String title, LocalDateTime dateTime, int notifyMinutesBefore, String priority) {
+    public record ScheduleRequest(String title, LocalDateTime dateTime, LocalDateTime endDateTime,
+            int notifyMinutesBefore, String priority) {
     }
 
-    public record MoveScheduleRequest(LocalDateTime dateTime) {}
+    public record MoveScheduleRequest(LocalDateTime dateTime, LocalDateTime endDateTime) {}
 
     public record GoalPlanRequest(String title, String requirements) {
     }

@@ -50,6 +50,8 @@
     #proposalResult { display:none; white-space:pre-wrap; background:#f7f3ff; border-left:4px solid #7a55e8; padding:16px; border-radius:7px; line-height:1.7; margin-top:16px; }
     .quick-times { display:flex; flex-wrap:wrap; gap:7px; margin:8px 0; }
     .quick-times button { padding:7px 10px; }
+    .time-range { display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; }
+    .time-range label { font-weight:700; } .time-range input { width:100%; display:block; }
     .priority-high { border-left:5px solid #e5484d; } .priority-medium { border-left:5px solid #e5a000; } .priority-low { border-left:5px solid #2f9e62; }
     #schedules { list-style:none; padding:0; margin:0; }
     .schedule-card { padding:14px; margin:10px 0; border-radius:10px; background:#f8faff; box-shadow:0 1px 5px #20304012; }
@@ -69,6 +71,7 @@
       .assistant-panel.open { opacity:1; }
       .assistant-toggle { display:block; right:14px; bottom:14px; }
       input[type=datetime-local] { width:100%; }
+      .time-range { grid-template-columns:1fr; } .time-range > span { display:none; }
       .calendar-day { min-height:62px; padding:4px; }
     }
   </style>
@@ -124,17 +127,23 @@
       <button class="secondary" onclick="changeMonth(1)" aria-label="次の月">›</button>
     </div>
     <div id="calendar" class="calendar-grid"></div>
-    <p class="small">日付を押すと、その日の予定を入力できます。</p>
+    <p class="small">日付を押すと、その日の予定だけを一覧表示します。</p>
   </section>
 
   <section id="scheduleForm" class="area-form">
     <h2>予定を追加</h2>
     <input id="title" type="text" placeholder="例：Java Silverの勉強">
-    <input id="dateTime" type="datetime-local">
+    <div class="time-range">
+      <label>開始時刻<input id="dateTime" type="datetime-local"></label>
+      <span>～</span>
+      <label>終了時刻<input id="endDateTime" type="datetime-local"></label>
+    </div>
     <div class="quick-times">
       <button class="secondary" onclick="setCurrentTime()">現在時刻</button>
-      <button class="secondary" onclick="addMinutes(15)">＋15分</button>
-      <button class="secondary" onclick="addMinutes(30)">＋30分</button>
+      <button class="secondary" onclick="setDuration(15)">15分</button>
+      <button class="secondary" onclick="setDuration(30)">30分</button>
+      <button class="secondary" onclick="setDuration(60)">1時間</button>
+      <button class="secondary" onclick="setDuration(120)">2時間</button>
       <button class="secondary" onclick="setQuickTime(9)">09:00</button>
       <button class="secondary" onclick="setQuickTime(12)">12:00</button>
       <button class="secondary" onclick="setQuickTime(18)">18:00</button>
@@ -169,7 +178,7 @@
       <button id="icsImportButton" onclick="importIcs()" disabled>取り込む</button>
       <span id="icsStatus" class="small"></span>
     </div>
-    <p class="small">書き出した.icsはGoogleカレンダーの「インポート」から読み込めます。自動再配置は同時刻の予定を1時間ずつ後ろへ移動します。</p>
+    <p class="small">書き出した.icsはGoogleカレンダーの「インポート」から読み込めます。自動再配置は予定の長さを保ったまま、重なりを後ろへ移動します。</p>
   </section>
   <section class="area-notices">
     <h2>ブラウザ通知</h2>
@@ -217,18 +226,27 @@
       return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
     }
 
-    function setCurrentTime() { document.querySelector('#dateTime').value = toLocalInput(new Date()); }
-    function addMinutes(minutes) {
-      const input = document.querySelector('#dateTime');
-      const date = input.value ? new Date(input.value) : new Date();
-      date.setMinutes(date.getMinutes() + minutes);
-      input.value = toLocalInput(date);
+    function setCurrentTime() {
+      const start=new Date(); const end=new Date(start.getTime()+60*60000);
+      document.querySelector('#dateTime').value=toLocalInput(start);
+      document.querySelector('#endDateTime').value=toLocalInput(end);
+    }
+    function setDuration(minutes) {
+      const startInput=document.querySelector('#dateTime');
+      const start=startInput.value ? new Date(startInput.value) : new Date();
+      startInput.value=toLocalInput(start);
+      document.querySelector('#endDateTime').value=toLocalInput(new Date(start.getTime()+minutes*60000));
     }
     function setQuickTime(hour) {
       const input = document.querySelector('#dateTime');
       const date = input.value ? new Date(input.value) : new Date();
       date.setHours(hour, 0, 0, 0); input.value = toLocalInput(date);
+      document.querySelector('#endDateTime').value=toLocalInput(new Date(date.getTime()+60*60000));
     }
+
+    function scheduleEnd(schedule) { return schedule.endDateTime || toLocalInput(new Date(new Date(schedule.dateTime).getTime()+60*60000)); }
+    function timeOnly(value) { return new Date(value).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}); }
+    function scheduleRange(schedule) { return `${new Date(schedule.dateTime).toLocaleDateString('ja-JP')} ${timeOnly(schedule.dateTime)}〜${timeOnly(scheduleEnd(schedule))}`; }
 
     const currentTone = () => document.querySelector('#assistantTone').value;
 
@@ -372,7 +390,7 @@
       const events=schedulesCache.filter(item=>localDateKey(item.dateTime)===selectedDateKey).sort((a,b)=>new Date(a.dateTime)-new Date(b.dateTime));
       const selected=new Date(`${selectedDateKey}T00:00`);
       document.querySelector('#scheduleListTitle').textContent=`${selected.getMonth()+1}月${selected.getDate()}日の予定`;
-      document.querySelector('#schedules').innerHTML=events.map(s=>`<li class="schedule-card priority-${s.priority || 'medium'}"><b>${s.title}</b><br><span class="small">${format(s.dateTime)}／優先度：${{high:'高',medium:'中',low:'低'}[s.priority || 'medium']}／${s.notifyMinutesBefore}分前に通知</span>${transitLinks(s.title)}<br><button class="secondary" onclick="deleteSchedule(${s.id})">削除</button></li>`).join('') || '<li class="small">この日の予定はありません。</li>';
+      document.querySelector('#schedules').innerHTML=events.map(s=>`<li class="schedule-card priority-${s.priority || 'medium'}"><b>${s.title}</b><br><span class="small">${scheduleRange(s)}／優先度：${{high:'高',medium:'中',low:'低'}[s.priority || 'medium']}／${s.notifyMinutesBefore}分前に通知</span>${transitLinks(s.title)}<br><button class="secondary" onclick="deleteSchedule(${s.id})">削除</button></li>`).join('') || '<li class="small">この日の予定はありません。</li>';
     }
 
     function renderCalendar() {
@@ -388,7 +406,7 @@
       for (let day = 1; day <= lastDay; day++) {
         const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const events = schedulesCache.filter(schedule => localDateKey(schedule.dateTime) === dateKey);
-        html += `<button class="calendar-day ${dateKey === todayKey ? 'today' : ''} ${dateKey === selectedDateKey ? 'selected' : ''}" onclick="selectCalendarDate('${dateKey}')"><b>${day}</b>${events.map(event => `<span class="calendar-event priority-${event.priority || 'medium'}">${event.title}</span>`).join('')}</button>`;
+        html += `<button class="calendar-day ${dateKey === todayKey ? 'today' : ''} ${dateKey === selectedDateKey ? 'selected' : ''}" onclick="selectCalendarDate('${dateKey}')"><b>${day}</b>${events.map(event => `<span class="calendar-event priority-${event.priority || 'medium'}">${timeOnly(event.dateTime)}〜${timeOnly(scheduleEnd(event))} ${event.title}</span>`).join('')}</button>`;
       }
       document.querySelector('#calendar').innerHTML = html;
     }
@@ -455,14 +473,16 @@
     async function addSchedule() {
       const title = document.querySelector('#title').value.trim();
       const dateTime = document.querySelector('#dateTime').value;
+      const endDateTime = document.querySelector('#endDateTime').value;
       const notifyMinutesBefore = Number(document.querySelector('#minutes').value);
       const priority = document.querySelector('#priority').value;
-      if (!title || !dateTime || notifyMinutesBefore < 1) return alert('予定名・日時・通知する分数を入力してください。');
+      if (!title || !dateTime || !endDateTime || notifyMinutesBefore < 1) return alert('予定名・開始時刻・終了時刻・通知する分数を入力してください。');
+      if (new Date(endDateTime) <= new Date(dateTime)) return alert('終了時刻は開始時刻より後にしてください。');
       const previousEvents=[...schedulesCache];
-      const temporary={id:-Date.now(),title,dateTime,notifyMinutesBefore,priority};
+      const temporary={id:-Date.now(),title,dateTime,endDateTime,notifyMinutesBefore,priority};
       schedulesCache=[...previousEvents,temporary]; selectedDateKey=localDateKey(dateTime);
       writeCache('eventsCache',schedulesCache); renderCalendar(); renderScheduleList();
-      const response = await fetch('/api/events', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, dateTime, notifyMinutesBefore, priority}) });
+      const response = await fetch('/api/events', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, dateTime, endDateTime, notifyMinutesBefore, priority}) });
       if (!response.ok) { schedulesCache=previousEvents; writeCache('eventsCache',previousEvents); renderCalendar(); renderScheduleList(); return alert('予定を保存できませんでした。アプリの起動状態を確認してください。'); }
       const saved=await response.json(); schedulesCache=schedulesCache.map(item=>item.id===temporary.id?saved:item); writeCache('eventsCache',schedulesCache);
       document.querySelector('#title').value = '';
@@ -510,7 +530,8 @@
     }
     async function addReverseProposal() {
       if (!reverseProposal) return;
-      const response = await fetch('/api/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:reverseProposal.title, dateTime:reverseProposal.dateTime, notifyMinutesBefore:30, priority:'medium'})});
+      const endDateTime=toLocalInput(new Date(new Date(reverseProposal.dateTime).getTime()+60*60000));
+      const response = await fetch('/api/events', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title:reverseProposal.title, dateTime:reverseProposal.dateTime, endDateTime, notifyMinutesBefore:30, priority:'medium'})});
       if (!response.ok) return alert('予定を保存できませんでした。');
       document.querySelector('#reverseProposal').style.display = 'none';
       setAssistantMessage('カレンダーへ追加しました。開始30分前に通知します。');
@@ -547,16 +568,19 @@
 
     async function compressSchedules() {
       const sorted=[...schedulesCache].sort((a,b)=>new Date(a.dateTime)-new Date(b.dateTime)); const moves=[];
-      for(let i=1;i<sorted.length;i++) { const previous=new Date(sorted[i-1].dateTime); const current=new Date(sorted[i].dateTime); const next=new Date(previous.getTime()+60*60000); if(localDateKey(previous)===localDateKey(current) && current<next){ sorted[i].dateTime=toLocalInput(next); moves.push(sorted[i]); } }
+      for(let i=1;i<sorted.length;i++) {
+        const previousStart=new Date(sorted[i-1].dateTime); const previousEnd=new Date(scheduleEnd(sorted[i-1])); const currentStart=new Date(sorted[i].dateTime); const currentEnd=new Date(scheduleEnd(sorted[i]));
+        if(localDateKey(previousStart)===localDateKey(currentStart) && currentStart<previousEnd){ const duration=Math.max(15*60000,currentEnd-currentStart); sorted[i].dateTime=toLocalInput(previousEnd); sorted[i].endDateTime=toLocalInput(new Date(previousEnd.getTime()+duration)); moves.push(sorted[i]); }
+      }
       if(!moves.length) return alert('重なっている予定はありません。');
-      if(!confirm(`${moves.length}件の予定を前の予定から1時間後へ移動しますか？`)) return;
+      if(!confirm(`${moves.length}件の予定を、前の予定が終了した後へ移動しますか？`)) return;
       writeCache('eventsCache', sorted);
-      await Promise.all(moves.map(item=>fetch(`/api/events/${item.id}/time`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateTime:item.dateTime})}))); await load();
+      await Promise.all(moves.map(item=>fetch(`/api/events/${item.id}/time`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateTime:item.dateTime,endDateTime:item.endDateTime})}))); await load();
     }
     function icsDate(value) { return toLocalInput(new Date(value)).replace(/[-:]/g,'').replace('T','T')+'00'; }
     function exportIcs() {
       const escape=value=>String(value).replace(/([,;\\])/g,'\\$1').replace(/\n/g,'\\n');
-      const body=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//AI Scheduler//JA',...schedulesCache.flatMap(s=>['BEGIN:VEVENT',`UID:${s.id}@ai-scheduler`,`DTSTART:${icsDate(s.dateTime)}`,`SUMMARY:${escape(s.title)}`,'END:VEVENT']),'END:VCALENDAR'].join('\r\n');
+      const body=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//AI Scheduler//JA',...schedulesCache.flatMap(s=>['BEGIN:VEVENT',`UID:${s.id}@ai-scheduler`,`DTSTART:${icsDate(s.dateTime)}`,`DTEND:${icsDate(scheduleEnd(s))}`,`SUMMARY:${escape(s.title)}`,'END:VEVENT']),'END:VCALENDAR'].join('\r\n');
       const link=document.createElement('a'); link.href=URL.createObjectURL(new Blob([body],{type:'text/calendar'})); link.download='ai-scheduler.ics'; link.click(); URL.revokeObjectURL(link.href);
     }
     function showIcsSelection() {
@@ -586,9 +610,9 @@
         const blocks=[...unfolded.matchAll(/BEGIN:VEVENT\r?\n([\s\S]*?)END:VEVENT/g)].map(match=>match[1]);
         const known=new Set(schedulesCache.map(item=>`${item.title}|${String(item.dateTime).slice(0,16)}`));
         for(const block of blocks) {
-          const title=unescapeIcs(icsValue(block,'SUMMARY')); const dateTime=parseIcsDate(icsValue(block,'DTSTART'));
+          const title=unescapeIcs(icsValue(block,'SUMMARY')); const dateTime=parseIcsDate(icsValue(block,'DTSTART')); const parsedEnd=parseIcsDate(icsValue(block,'DTEND')); const endDateTime=parsedEnd || (dateTime ? toLocalInput(new Date(new Date(dateTime).getTime()+60*60000)) : '');
           if(!title||!dateTime||known.has(`${title}|${dateTime}`)){skipped++;continue;}
-          const response=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,dateTime,notifyMinutesBefore:30,priority:'medium'})});
+          const response=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,dateTime,endDateTime,notifyMinutesBefore:30,priority:'medium'})});
           if(!response.ok){skipped++;continue;}
           const saved=await response.json(); schedulesCache.push(saved); known.add(`${title}|${dateTime}`); writeCache('eventsCache',schedulesCache); added++;
         }
