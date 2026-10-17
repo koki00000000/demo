@@ -6,7 +6,7 @@
   <title>AI予定秘書</title>
   <style>
     :root { color:#1c2434; background:#f6f8fc; font-family:system-ui, sans-serif; }
-    body { max-width:760px; margin:28px auto; padding:0 20px; }
+    body { max-width:1200px; margin:28px auto; padding:0 24px; }
     header { display:flex; align-items:center; justify-content:space-between; gap:16px; }
     h1 { margin:0 0 4px; } .hint,.small { color:#687386; } .hint { margin-top:0; }
     section { background:#fff; border-radius:14px; padding:22px; margin:18px 0; box-shadow:0 2px 10px #20304012; }
@@ -26,9 +26,14 @@
     .calendar-day.today { border:2px solid #2764d9; }
     .calendar-day.empty { border:0; background:transparent; cursor:default; }
     .calendar-event { display:block; margin-top:4px; padding:2px 4px; border-radius:4px; background:#e8eefb; color:#2454aa; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .assistant-panel { position:fixed; right:20px; bottom:82px; z-index:20; width:min(380px,calc(100vw - 40px)); max-height:72vh; overflow:auto; display:flex; align-items:flex-start; gap:14px; background:linear-gradient(135deg,#f7f3ff,#eef5ff); transform:translateX(calc(100% + 40px)); opacity:0; transition:.25s ease; }
-    .assistant-panel.open { transform:translateX(0); opacity:1; }
-    .assistant-toggle { position:fixed; right:20px; bottom:20px; z-index:21; border-radius:999px; box-shadow:0 5px 22px #173b7a55; }
+    .app-grid { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(320px,1fr); grid-template-areas:"assistant schedules" "calendar schedules" "form routines" "form todos" "goals goals" "materials materials" "sync sync" "notices notices"; gap:18px 22px; align-items:start; }
+    .app-grid > section { margin:0; }
+    .area-assistant { grid-area:assistant; } .area-calendar { grid-area:calendar; } .area-form { grid-area:form; }
+    .area-schedules { grid-area:schedules; } .area-routines { grid-area:routines; } .area-todos { grid-area:todos; }
+    .area-goals { grid-area:goals; } .area-materials { grid-area:materials; } .area-sync { grid-area:sync; } .area-notices { grid-area:notices; }
+    .assistant-panel { display:flex; align-items:flex-start; gap:14px; background:linear-gradient(135deg,#f7f3ff,#eef5ff); }
+    .assistant-panel .close { display:none; }
+    .assistant-toggle { display:none; position:fixed; right:20px; bottom:20px; z-index:21; border-radius:999px; box-shadow:0 5px 22px #173b7a55; }
     .assistant-avatar { flex:0 0 52px; width:52px; height:52px; display:grid; place-items:center; border-radius:50%; background:#fff; box-shadow:0 2px 10px #20304018; font-size:28px; }
     .assistant-content { min-width:0; flex:1; }
     .assistant-content h2 { margin:0 0 8px; font-size:18px; }
@@ -51,11 +56,16 @@
     .spinner { width:32px; height:32px; margin:0 auto 12px; border:4px solid #dce6fa; border-top-color:#2764d9; border-radius:50%; animation:spin .8s linear infinite; }
     @keyframes spin { to { transform:rotate(360deg); } }
     .routine-row,.material-row { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid #edf0f5; }
-    @media (max-width:600px) {
-      body { margin:16px auto; padding:0 12px; }
-      .assistant-panel { right:0; bottom:0; width:auto; max-height:82vh; border-radius:18px 18px 0 0; transform:translateY(105%); }
+    @media (max-width:767px) {
+      body { width:auto; max-width:none; margin:16px auto; padding:0 12px; }
+      header { align-items:flex-start; } header h1 { font-size:25px; }
+      .app-grid { display:flex; flex-direction:column; gap:0; }
+      .app-grid > section { width:100%; margin:10px 0; }
+      .assistant-panel { position:fixed; inset:auto 0 0 0; z-index:20; width:auto !important; max-height:82vh; overflow:auto; border-radius:18px 18px 0 0; transform:translateY(105%); opacity:0; transition:.25s ease; }
       .assistant-panel.open { transform:translateY(0); }
-      .assistant-toggle { right:14px; bottom:14px; }
+      .assistant-panel.open { opacity:1; }
+      .assistant-panel .close { display:block; }
+      .assistant-toggle { display:block; right:14px; bottom:14px; }
       input[type=datetime-local] { width:100%; }
       .calendar-day { min-height:62px; padding:4px; }
     }
@@ -68,7 +78,8 @@
     <button onclick="openGoalModal()">＋ 目標を作る</button>
   </header>
 
-  <section id="assistantPanel" class="assistant-panel" aria-live="polite">
+  <main class="app-grid">
+  <section id="assistantPanel" class="assistant-panel area-assistant" aria-live="polite">
     <div class="assistant-avatar" role="img" aria-label="AI秘書のアイコン">🤖</div>
     <div class="assistant-content">
       <div class="calendar-head"><h2>AI秘書</h2><button class="close" onclick="toggleAssistant(false)" aria-label="閉じる">×</button></div>
@@ -89,12 +100,12 @@
   </section>
   <button class="assistant-toggle" onclick="toggleAssistant()">🤖 AIに相談</button>
 
-  <section>
+  <section class="area-goals">
     <h2>進行中の目標</h2>
     <div id="goals"><p class="small">目標はまだありません。</p></div>
   </section>
 
-  <section>
+  <section class="area-todos">
     <h2>今日のTodo</h2>
     <p class="small">目標の「今日のTodoを作る」から、AIに小さな行動を作ってもらえます。</p>
     <div id="todos"><p class="small">今日のTodoはまだありません。</p></div>
@@ -104,7 +115,7 @@
     </div>
   </section>
 
-  <section>
+  <section class="area-calendar">
     <div class="calendar-head">
       <button class="secondary" onclick="changeMonth(-1)" aria-label="前の月">‹</button>
       <h2 id="calendarTitle">カレンダー</h2>
@@ -114,7 +125,7 @@
     <p class="small">日付を押すと、その日の予定を入力できます。</p>
   </section>
 
-  <section id="scheduleForm">
+  <section id="scheduleForm" class="area-form">
     <h2>予定を追加</h2>
     <input id="title" type="text" placeholder="例：Java Silverの勉強">
     <input id="dateTime" type="datetime-local">
@@ -134,20 +145,20 @@
       <span id="imageStatus" class="small"></span>
     </div>
   </section>
-  <section><h2>予定</h2><ul id="schedules"></ul></section>
-  <section>
+  <section class="area-schedules"><h2>予定一覧</h2><ul id="schedules"></ul></section>
+  <section class="area-routines">
     <h2>毎日のルーティン</h2>
     <div class="inline-tools"><input id="routineInput" type="text" placeholder="例：英単語を10分復習"><button onclick="addRoutine()">追加</button></div>
     <div id="routines"></div>
   </section>
-  <section>
+  <section class="area-materials">
     <h2>授業・課題メモ</h2>
     <input id="materialTitle" type="text" placeholder="授業名・課題名">
     <textarea id="materialMemo" placeholder="課題内容や提出期限など"></textarea>
     <div class="inline-tools"><input id="materialFile" type="file" accept="application/pdf,text/plain"><button onclick="saveMaterial()">保存</button></div>
     <div id="materials"></div>
   </section>
-  <section>
+  <section class="area-sync">
     <h2>予定の整理・カレンダー連携</h2>
     <div class="inline-tools">
       <button onclick="compressSchedules()">重なった予定を自動再配置</button>
@@ -156,7 +167,7 @@
     </div>
     <p class="small">書き出した.icsはGoogleカレンダーの「インポート」から読み込めます。自動再配置は同時刻の予定を1時間ずつ後ろへ移動します。</p>
   </section>
-  <section>
+  <section class="area-notices">
     <h2>ブラウザ通知</h2>
     <div class="notification-settings">
       <span>現在の状態：</span><span id="notificationStatus">確認中</span>
@@ -165,6 +176,7 @@
     </div>
     <p class="small">アプリをブラウザで開いている間、指定した時間前にデスクトップ通知を表示します。</p>
   </section>
+  </main>
 
   <div class="modal" id="goalModal" role="dialog" aria-modal="true">
     <div class="modal-card">
