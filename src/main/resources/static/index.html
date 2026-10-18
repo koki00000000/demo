@@ -132,7 +132,7 @@
 
   <section id="scheduleForm" class="area-form">
     <h2>予定を追加</h2>
-    <input id="title" type="text" placeholder="例：Java Silverの勉強">
+    <input id="title" type="text" placeholder="例：資格試験の勉強">
     <div class="time-range">
       <label>開始時刻<input id="dateTime" type="datetime-local"></label>
       <span>～</span>
@@ -484,9 +484,9 @@
     }
 
     async function load() {
-      const [goals, todos, schedules, routines] = await Promise.all([
+      const [goals, todos, routines] = await Promise.all([
         fetchList('/api/goals', 'goalsCache'), fetchList('/api/todos/today', 'todosCache'),
-        fetchList('/api/events', 'eventsCache'), fetchList('/api/routines', 'routinesCache')
+        fetchList('/api/routines', 'routinesCache'), loadEvents()
       ]);
       if (goals) document.querySelector('#goals').innerHTML = goals.map(g =>
         `<div class="notification">
@@ -508,11 +508,17 @@
 </div>`).join('') || '<p class="small">目標はまだありません。</p>';
       if (todos) document.querySelector('#todos').innerHTML = todos.map(t =>
         `<p><label><input type="checkbox" ${t.completed ? 'checked' : ''} onchange="toggleTodo(${t.id})"> <span style="${t.completed ? 'text-decoration:line-through;color:#687386' : ''}">${t.title}</span></label> <button class="secondary" onclick="createReverseSchedule('${encodeURIComponent(t.title)}', this)">逆算スケジュール作成</button></p>`).join('') || '<p class="small">今日のTodoはまだありません。</p>';
-      if (schedules) {
-        schedulesCache = schedules;
-        renderCalendar(); renderScheduleList();
-      }
       if (routines) { routinesCache = routines; renderRoutines(); }
+    }
+    async function loadEvents() {
+      try {
+        const response=await fetch('/api/events',{cache:'no-store'});
+        if(!response.ok) throw new Error();
+        schedulesCache=await response.json();
+        renderCalendar(); renderScheduleList();
+      } catch (_) {
+        setAssistantMessage('サーバーから予定を取得できませんでした。接続を確認してください。');
+      }
     }
     async function addSchedule() {
       const title = document.querySelector('#title').value.trim();
@@ -522,22 +528,18 @@
       const priority = document.querySelector('#priority').value;
       if (!title || !dateTime || !endDateTime || notifyMinutesBefore < 1) return alert('予定名・開始時刻・終了時刻・通知する分数を入力してください。');
       if (new Date(endDateTime) <= new Date(dateTime)) return alert('終了時刻は開始時刻より後にしてください。');
-      const previousEvents=[...schedulesCache];
-      const temporary={id:-Date.now(),title,dateTime,endDateTime,notifyMinutesBefore,priority};
-      schedulesCache=[...previousEvents,temporary]; selectedDateKey=localDateKey(dateTime);
-      writeCache('eventsCache',schedulesCache); renderCalendar(); renderScheduleList();
       const response = await fetch('/api/events', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, dateTime, endDateTime, notifyMinutesBefore, priority}) });
-      if (!response.ok) { schedulesCache=previousEvents; writeCache('eventsCache',previousEvents); renderCalendar(); renderScheduleList(); return alert('予定を保存できませんでした。アプリの起動状態を確認してください。'); }
-      const saved=await response.json(); schedulesCache=schedulesCache.map(item=>item.id===temporary.id?saved:item); writeCache('eventsCache',schedulesCache);
+      if (!response.ok) return alert('予定を保存できませんでした。アプリの起動状態を確認してください。');
+      selectedDateKey=localDateKey(dateTime);
       document.querySelector('#title').value = '';
-      renderCalendar(); renderScheduleList();
+      await loadEvents();
       showScheduleAdvice(title);
     }
     async function deleteSchedule(id) {
       if (!confirm('この予定を削除しますか？')) return;
-      const previous=[...schedulesCache]; schedulesCache=schedulesCache.filter(item=>item.id!==id);
-      writeCache('eventsCache',schedulesCache); renderCalendar(); renderScheduleList();
-      fetch(`/api/events/${id}`,{method:'DELETE'}).then(response=>{if(!response.ok)throw new Error();}).catch(()=>{schedulesCache=previous;writeCache('eventsCache',previous);renderCalendar();renderScheduleList();alert('削除を保存できなかったため、予定を元に戻しました。');});
+      const response=await fetch(`/api/events/${id}`,{method:'DELETE'});
+      if(!response.ok) return alert('予定を削除できませんでした。');
+      await loadEvents();
     }
     async function analyzeScheduleImage(input) {
       const file = input.files[0];
@@ -618,7 +620,6 @@
       }
       if(!moves.length) return alert('重なっている予定はありません。');
       if(!confirm(`${moves.length}件の予定を、前の予定が終了した後へ移動しますか？`)) return;
-      writeCache('eventsCache', sorted);
       await Promise.all(moves.map(item=>fetch(`/api/events/${item.id}/time`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({dateTime:item.dateTime,endDateTime:item.endDateTime})}))); await load();
     }
     function icsDate(value) { return toLocalInput(new Date(value)).replace(/[-:]/g,'').replace('T','T')+'00'; }
@@ -658,7 +659,7 @@
           if(!title||!dateTime||known.has(`${title}|${dateTime}`)){skipped++;continue;}
           const response=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,dateTime,endDateTime,notifyMinutesBefore:30,priority:'medium'})});
           if(!response.ok){skipped++;continue;}
-          const saved=await response.json(); schedulesCache.push(saved); known.add(`${title}|${dateTime}`); writeCache('eventsCache',schedulesCache); added++;
+          const saved=await response.json(); schedulesCache.push(saved); known.add(`${title}|${dateTime}`); added++;
         }
         await load();
         const message=`${added}件の予定をGoogleカレンダーから取り込みました！`;
@@ -719,6 +720,7 @@
       try { await load(); } finally { document.querySelector('#loading').classList.add('hidden'); }
       setInterval(checkScheduleReminders, 60000);
       setInterval(checkBreakSuggestion, 60000);
+      setInterval(loadEvents, 15000);
     });
   </script>
   <div class="modal" id="reportModal">

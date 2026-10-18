@@ -44,11 +44,6 @@ public class DemoApplication {
         this.routineRepository = routineRepository;
         this.notificationService = notificationService;
         this.lineNotificationService = lineNotificationService;
-
-        if (scheduleRepository.count() == 0) {
-            scheduleRepository.save(new Schedule("Java Silverの勉強", LocalDateTime.now().plusHours(2), 30));
-            scheduleRepository.save(new Schedule("自動運転スクールの教習", LocalDateTime.now().plusHours(4), 60));
-        }
     }
 
     public static void main(String[] args) {
