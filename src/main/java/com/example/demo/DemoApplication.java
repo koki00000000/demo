@@ -28,19 +28,22 @@ public class DemoApplication {
     private final TodoRepository todoRepository;
     private final RoutineRepository routineRepository;
     private final NotificationService notificationService;
+    private final LineNotificationService lineNotificationService;
 
     public DemoApplication(ScheduleRepository scheduleRepository,
             AiNotificationRepository notificationRepository,
             GoalRepository goalRepository,
             TodoRepository todoRepository,
             RoutineRepository routineRepository,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            LineNotificationService lineNotificationService) {
         this.scheduleRepository = scheduleRepository;
         this.notificationRepository = notificationRepository;
         this.goalRepository = goalRepository;
         this.todoRepository = todoRepository;
         this.routineRepository = routineRepository;
         this.notificationService = notificationService;
+        this.lineNotificationService = lineNotificationService;
 
         if (scheduleRepository.count() == 0) {
             scheduleRepository.save(new Schedule("Java Silverの勉強", LocalDateTime.now().plusHours(2), 30));
@@ -108,6 +111,22 @@ public class DemoApplication {
     @PostMapping("/api/assistant/chat")
     public Map<String, String> assistantChat(@RequestBody ChatRequest request) {
         return Map.of("message", notificationService.chat(request.message(), request.tone()));
+    }
+
+    @PostMapping("/api/line/test")
+    public Map<String, String> testLine(@RequestBody LineMessageRequest request) {
+        lineNotificationService.send(request.accessToken(), request.userId(),
+                "【AI予定秘書】\nLINE通知のテストに成功しました！");
+        return Map.of("message", "LINEへテスト通知を送りました。");
+    }
+
+    @PostMapping("/api/line/send")
+    public Map<String, String> sendLine(@RequestBody LineMessageRequest request) {
+        String scheduleTitle = request.scheduleTitle() == null || request.scheduleTitle().isBlank()
+                ? "予定を確認してください。" : request.scheduleTitle();
+        lineNotificationService.send(request.accessToken(), request.userId(),
+                "【AI予定秘書】\n予定の時間になりました！\n" + scheduleTitle);
+        return Map.of("message", "LINEへ通知を送りました。");
     }
 
     @PostMapping("/api/assistant/image-schedules")
@@ -227,4 +246,5 @@ public class DemoApplication {
     public record ReverseScheduleRequest(String todoTitle, String tone) {}
     public record ChatRequest(String message, String tone) {}
     public record RoutineRequest(String title) {}
+    public record LineMessageRequest(String accessToken, String userId, String scheduleTitle) {}
 }

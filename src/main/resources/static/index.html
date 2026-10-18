@@ -11,7 +11,7 @@
     h1 { margin:0 0 4px; } .hint,.small { color:#687386; } .hint { margin-top:0; }
     section { background:#fff; border-radius:14px; padding:22px; margin:18px 0; box-shadow:0 2px 10px #20304012; }
     input, textarea, select { box-sizing:border-box; padding:10px; margin:5px 0; border:1px solid #ccd3df; border-radius:8px; font:inherit; }
-    input[type=text], textarea { width:100%; } input[type=datetime-local] { width:68%; } input[type=number] { width:28%; }
+    input[type=text], input[type=password], textarea { width:100%; } input[type=datetime-local] { width:68%; } input[type=number] { width:28%; }
     textarea { min-height:150px; resize:vertical; line-height:1.6; }
     button { padding:10px 14px; border:0; border-radius:8px; background:#2764d9; color:#fff; cursor:pointer; font-weight:700; font-size:15px; }
     button.secondary { background:#e8eefb; color:#2454aa; } button.close { background:transparent; color:#687386; font-size:22px; padding:0 8px; }
@@ -27,11 +27,11 @@
     .calendar-day.selected { background:#edf4ff; box-shadow:inset 0 0 0 2px #2764d9; }
     .calendar-day.empty { border:0; background:transparent; cursor:default; }
     .calendar-event { display:block; margin-top:4px; padding:2px 4px; border-radius:4px; background:#e8eefb; color:#2454aa; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .app-grid { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(320px,1fr); grid-template-areas:"calendar schedules" "form routines" "form todos" "goals goals" "materials materials" "sync sync" "notices notices"; gap:18px 22px; align-items:start; }
+    .app-grid { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(320px,1fr); grid-template-areas:"calendar schedules" "form routines" "form todos" "goals goals" "materials materials" "sync sync" "line line" "notices notices"; gap:18px 22px; align-items:start; }
     .app-grid > section { margin:0; }
     .area-calendar { grid-area:calendar; } .area-form { grid-area:form; }
     .area-schedules { grid-area:schedules; } .area-routines { grid-area:routines; } .area-todos { grid-area:todos; }
-    .area-goals { grid-area:goals; } .area-materials { grid-area:materials; } .area-sync { grid-area:sync; } .area-notices { grid-area:notices; }
+    .area-goals { grid-area:goals; } .area-materials { grid-area:materials; } .area-sync { grid-area:sync; } .area-line { grid-area:line; } .area-notices { grid-area:notices; }
     .assistant-panel { position:fixed; right:20px; bottom:78px; z-index:20; width:min(390px,calc(100vw - 40px)); max-height:72vh; overflow:auto; display:flex; align-items:flex-start; gap:14px; background:linear-gradient(135deg,#f7f3ff,#eef5ff); transform:translateX(calc(100% + 40px)); opacity:0; transition:.25s ease; }
     .assistant-panel.open { transform:translateX(0); opacity:1; }
     .assistant-toggle { display:block; position:fixed; right:20px; bottom:20px; z-index:21; border-radius:999px; box-shadow:0 5px 22px #173b7a55; }
@@ -188,6 +188,17 @@
       <button class="secondary" onclick="sendTestNotification()">テスト通知を送る</button>
     </div>
     <p class="small">アプリをブラウザで開いている間、指定した時間前にデスクトップ通知を表示します。</p>
+  </section>
+  <section class="area-line">
+    <h2>LINE通知設定</h2>
+    <label>LINE Access Token<input id="lineAccessToken" type="password" autocomplete="off" placeholder="チャネルアクセストークン"></label>
+    <label>LINE User ID<input id="lineUserId" type="text" autocomplete="off" placeholder="Uから始まるユーザーID"></label>
+    <div class="inline-tools">
+      <button onclick="saveLineSettings()">設定を保存</button>
+      <button class="secondary" onclick="testLineNotification()">LINEテスト送信</button>
+      <span id="lineStatus" class="small"></span>
+    </div>
+    <p class="small">認証情報はこのブラウザ内に保存されます。共有PCでは保存しないでください。自動LINE通知には、このページをブラウザで開いておく必要があります。</p>
   </section>
   </main>
 
@@ -422,20 +433,53 @@
       document.querySelector('.area-schedules').scrollIntoView({behavior:'smooth',block:'start'});
     }
 
+    function lineSettings() {
+      return {accessToken:localStorage.getItem('lineAccessToken') || '', userId:localStorage.getItem('lineUserId') || ''};
+    }
+    function saveLineSettings() {
+      localStorage.setItem('lineAccessToken',document.querySelector('#lineAccessToken').value.trim());
+      localStorage.setItem('lineUserId',document.querySelector('#lineUserId').value.trim());
+      document.querySelector('#lineStatus').textContent='設定を保存しました。';
+    }
+    function restoreLineSettings() {
+      const settings=lineSettings(); document.querySelector('#lineAccessToken').value=settings.accessToken; document.querySelector('#lineUserId').value=settings.userId;
+    }
+    async function postLine(url,payload) {
+      const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!response.ok) throw new Error(); return response.json();
+    }
+    async function testLineNotification() {
+      saveLineSettings(); const status=document.querySelector('#lineStatus'); status.textContent='テスト送信中…';
+      try { const result=await postLine('/api/line/test',lineSettings()); status.textContent=result.message; }
+      catch (_) { status.textContent='送信できませんでした。TokenとUser IDを確認してください。'; }
+    }
+    async function sendLineNotification(schedule) {
+      const settings=lineSettings();
+      if(!settings.accessToken || !settings.userId) return false;
+      await postLine('/api/line/send',{...settings,scheduleTitle:`${schedule.title}（${scheduleRange(schedule)}）`});
+      return true;
+    }
+
     async function checkScheduleReminders() {
       const now = Date.now();
-      if ('Notification' in window && Notification.permission === 'granted') {
-        const sent = new Set(JSON.parse(localStorage.getItem('sentScheduleNotifications') || '[]'));
-        for (const schedule of schedulesCache) {
-          const notificationTime = new Date(schedule.dateTime).getTime() - schedule.notifyMinutesBefore * 60000;
-          const key = `${schedule.id}:${notificationTime}`;
-          if (notificationTime > lastReminderCheck && notificationTime <= now && !sent.has(key)) {
+      const sent = new Set(JSON.parse(localStorage.getItem('sentScheduleNotifications') || '[]'));
+      for (const schedule of schedulesCache) {
+        const notificationTime = new Date(schedule.dateTime).getTime() - schedule.notifyMinutesBefore * 60000;
+        const key = `${schedule.id}:${notificationTime}`;
+        if (notificationTime > lastReminderCheck && notificationTime <= now && !sent.has(key)) {
+          let attempted=false;
+          if ('Notification' in window && Notification.permission === 'granted') {
             new Notification('AI予定秘書', { body: `${schedule.title}まであと${schedule.notifyMinutesBefore}分です。準備を始めましょう！` });
-            sent.add(key);
+            attempted=true;
           }
+          if (lineSettings().accessToken && lineSettings().userId) {
+            attempted=true;
+            sendLineNotification(schedule).catch(()=>{ document.querySelector('#lineStatus').textContent='予定のLINE通知を送信できませんでした。'; });
+          }
+          if(attempted) sent.add(key);
         }
-        localStorage.setItem('sentScheduleNotifications', JSON.stringify([...sent].slice(-100)));
       }
+      localStorage.setItem('sentScheduleNotifications', JSON.stringify([...sent].slice(-100)));
       lastReminderCheck = now;
     }
 
@@ -669,6 +713,7 @@
     async function toggleTodo(id) { await fetch(`/api/todos/${id}/complete`, {method:'PATCH'}); load(); }
     document.addEventListener('DOMContentLoaded', async () => {
       document.querySelector('#assistantTone').value = localStorage.getItem('assistantTone') || 'friendly';
+      restoreLineSettings();
       updateNotificationStatus();
       setCurrentTime(); routinesCache=readCache('routinesCache'); renderRoutines(); renderMaterials();
       try { await load(); } finally { document.querySelector('#loading').classList.add('hidden'); }
