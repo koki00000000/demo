@@ -171,8 +171,8 @@
       <h3>大学の授業をサクッと登録</h3>
       <input id="classTitle" type="text" placeholder="授業名（例：プログラミング基礎）">
       <div class="inline-tools">
-        <label>曜日 <select id="classWeekday"><option value="1">月</option><option value="2">火</option><option value="3">水</option><option value="4">木</option><option value="5">金</option><option value="6">土</option></select></label>
-        <label>時限 <select id="classPeriod"><option value="1">1限 9:00〜10:30</option><option value="2">2限 10:40〜12:10</option><option value="3">3限 13:00〜14:30</option><option value="4">4限 14:40〜16:10</option><option value="5">5限 16:20〜17:50</option></select></label>
+        <label>曜日 <select id="classWeekday" onchange="updateTimetablePeriods()"><option value="1">月</option><option value="2">火</option><option value="3">水</option><option value="4">木</option><option value="5">金</option><option value="6">土</option></select></label>
+        <label><span id="periodTypeLabel">平日コマ</span> <select id="classPeriod"></select></label>
         <button onclick="addTimetableClass()">次の該当日に登録</button>
       </div>
     </div>
@@ -334,13 +334,29 @@
       if(!response.ok)return alert('予定を登録できませんでした。'); selectedDateKey=localDateKey(dateTime); await loadEvents();
     }
 
-    function toggleTimetableMode() { document.querySelector('#timetablePanel').classList.toggle('open'); }
+    const weekdayPeriods={
+      5:{label:'平日5時限',start:'16:30',end:'18:00'},
+      6:{label:'平日6時限',start:'18:10',end:'19:40'},
+      7:{label:'平日7時限',start:'19:50',end:'21:20'}
+    };
+    const saturdayPeriods={
+      2:{label:'土曜2時限',start:'10:40',end:'12:10'},
+      3:{label:'土曜3時限',start:'13:10',end:'14:40'},
+      4:{label:'土曜4時限',start:'14:50',end:'16:20'},
+      5:{label:'土曜5時限',start:'16:30',end:'18:00'},
+      6:{label:'土曜6時限',start:'18:10',end:'19:40'}
+    };
+    function updateTimetablePeriods() {
+      const saturday=Number(document.querySelector('#classWeekday').value)===6; const periods=saturday?saturdayPeriods:weekdayPeriods;
+      document.querySelector('#periodTypeLabel').textContent=saturday?'土曜コマ':'平日コマ';
+      document.querySelector('#classPeriod').innerHTML=Object.entries(periods).map(([number,period])=>`<option value="${number}">${period.label} ${period.start}〜${period.end}</option>`).join('');
+    }
+    function toggleTimetableMode() { document.querySelector('#timetablePanel').classList.toggle('open'); updateTimetablePeriods(); }
     async function addTimetableClass() {
       const title=document.querySelector('#classTitle').value.trim(); if(!title)return alert('授業名を入力してください。');
-      const weekday=Number(document.querySelector('#classWeekday').value); const period=Number(document.querySelector('#classPeriod').value);
-      const times={1:['09:00','10:30'],2:['10:40','12:10'],3:['13:00','14:30'],4:['14:40','16:10'],5:['16:20','17:50']}[period];
-      const date=new Date(); let add=(weekday-date.getDay()+7)%7; if(add===0 && date.toTimeString().slice(0,5)>=times[0])add=7; date.setDate(date.getDate()+add);
-      const dateKey=localDateKey(date); const event={title:`授業：${title}`,dateTime:`${dateKey}T${times[0]}`,endDateTime:`${dateKey}T${times[1]}`,notifyMinutesBefore:30,priority:'medium'};
+      const weekday=Number(document.querySelector('#classWeekday').value); const periodNumber=Number(document.querySelector('#classPeriod').value); const period=(weekday===6?saturdayPeriods:weekdayPeriods)[periodNumber];
+      const date=new Date(); let add=(weekday-date.getDay()+7)%7; if(add===0 && date.toTimeString().slice(0,5)>=period.start)add=7; date.setDate(date.getDate()+add);
+      const dateKey=localDateKey(date); const event={title:`授業：${title}`,dateTime:`${dateKey}T${period.start}`,endDateTime:`${dateKey}T${period.end}`,notifyMinutesBefore:30,priority:'medium'};
       const response=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(event)}); if(!response.ok)return alert('授業を登録できませんでした。');
       document.querySelector('#classTitle').value=''; selectedDateKey=dateKey; calendarMonth=new Date(date.getFullYear(),date.getMonth(),1); await loadEvents();
     }
@@ -870,6 +886,7 @@
       document.querySelector('#assistantTone').value = localStorage.getItem('assistantTone') || 'friendly';
       restoreLineSettings();
       updateNotificationStatus();
+      updateTimetablePeriods();
       setCurrentTime(); routinesCache=readCache('routinesCache'); renderRoutines(); renderMaterials();
       try { await load(); } finally { document.querySelector('#loading').classList.add('hidden'); }
       setInterval(checkScheduleReminders, 60000);
