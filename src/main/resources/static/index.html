@@ -196,6 +196,9 @@
     <div class="calendar-head"><h2>時間配分</h2><select id="chartPeriod" onchange="renderTimeChart()"><option value="week">今週</option><option value="month">今月</option></select></div>
     <div class="chart-wrap"><canvas id="timeChart" aria-label="カテゴリ別時間配分"></canvas></div>
     <p id="chartSummary" class="small"></p>
+    <h3>教科別 勉強時間グラフ</h3>
+    <div class="chart-wrap"><canvas id="subjectStudyChart" aria-label="教科別勉強時間"></canvas></div>
+    <p id="subjectChartSummary" class="small"></p>
   </section>
   <section class="area-timer">
     <h2>勉強タイマー</h2>
@@ -292,6 +295,7 @@
     let nextBreakSuggestionAt = Date.now() + 50 * 60000;
     let reverseProposal = null;
     let timeChart = null;
+    let subjectStudyChart = null;
     let studyElapsedMs = 0;
     let studyStartedAt = 0;
     let studyTimerInterval = null;
@@ -309,6 +313,25 @@
 
     function scheduleCategory(event) {
       return event.category && event.category !== 'その他' ? event.category : eventCategory(event.title);
+    }
+
+    function studySubject(title) {
+      const subjects = [
+        ['Java', /Java/i], ['C言語', /C言語|\bC\b/i], ['離散数学', /離散数学/],
+        ['英語', /英語|TOEIC|英単語/i], ['プログラミング', /プログラミング|コーディング/i],
+        ['物理', /物理/], ['数学', /数学|微分|積分|線形代数/]
+      ];
+      return subjects.find(([, pattern]) => pattern.test(title))?.[0] || 'その他（勉強）';
+    }
+
+    function isStudyEvent(event) {
+      return ['勉強','授業'].includes(scheduleCategory(event)) || /勉強|授業|講義|課題|学習|資格|試験|復習|問題集|Java|C言語|離散数学|英語|プログラミング|物理|数学/i.test(event.title);
+    }
+
+    function formatStudyMinutes(minutes) {
+      if(minutes < 60) return `${Math.round(minutes)}分`;
+      const hours=Math.floor(minutes/60); const rest=Math.round(minutes%60);
+      return rest ? `${hours}時間${rest}分` : `${hours}時間`;
     }
 
     function chartRange() {
@@ -333,6 +356,24 @@
       if(typeof Chart==='undefined') { summary.textContent+=' Chart.jsを読み込めませんでした。ネット接続を確認してください。'; return; }
       if(timeChart) timeChart.destroy();
       timeChart=new Chart(document.querySelector('#timeChart'),{type:'pie',data:{labels:labels.length?labels:['予定なし'],datasets:[{data:values.length?values:[1],backgroundColor:values.length?['#4f7dd9','#7a55e8','#e5a000','#2f9e62','#9aa4b5']:['#e6eaf0']}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:context=>values.length?`${context.label}: ${context.raw}時間`:'予定なし'}}}}});
+      renderSubjectStudyChart();
+    }
+
+    function renderSubjectStudyChart() {
+      const canvas=document.querySelector('#subjectStudyChart'); if(!canvas) return;
+      const [rangeStart,rangeEnd]=chartRange(); const totals={};
+      for(const event of schedulesCache) {
+        if(!isStudyEvent(event)) continue;
+        const start=Math.max(new Date(event.dateTime).getTime(),rangeStart); const end=Math.min(new Date(scheduleEnd(event)).getTime(),rangeEnd);
+        if(end<=start) continue;
+        const subject=studySubject(event.title); totals[subject]=(totals[subject]||0)+(end-start)/60000;
+      }
+      const subjects=Object.keys(totals); const minutes=subjects.map(subject=>Math.round(totals[subject]));
+      const labels=subjects.map((subject,index)=>`${subject}（${formatStudyMinutes(minutes[index])}）`);
+      const summary=document.querySelector('#subjectChartSummary');
+      summary.textContent=minutes.length ? `勉強時間合計：${formatStudyMinutes(minutes.reduce((a,b)=>a+b,0))}` : 'この期間に集計できる勉強予定はありません。';
+      if(subjectStudyChart) subjectStudyChart.destroy();
+      subjectStudyChart=new Chart(canvas,{type:'pie',data:{labels:labels.length?labels:['勉強予定なし'],datasets:[{data:minutes.length?minutes:[1],backgroundColor:minutes.length?['#4f7dd9','#7a55e8','#e5a000','#2f9e62','#e05f76','#22a6b3','#9aa4b5']:['#e6eaf0']}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:context=>minutes.length?`${subjects[context.dataIndex]}: ${formatStudyMinutes(context.raw)}`:'勉強予定なし'}}}}});
     }
 
     function renderCountdowns() {
