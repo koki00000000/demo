@@ -20,6 +20,7 @@ public class Todo {
     private LocalDate scheduledDate;
     private boolean completed;
     private LocalDateTime createdAt;
+    private Long userId;
 
     public Todo() {
     }
@@ -39,4 +40,6 @@ public class Todo {
     public boolean isCompleted() { return completed; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCompleted(boolean completed) { this.completed = completed; }
+    public Long getUserId() { return userId; }
+    public void setUserId(Long userId) { this.userId = userId; }
 }

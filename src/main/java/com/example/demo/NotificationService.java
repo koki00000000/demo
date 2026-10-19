@@ -67,8 +67,10 @@ public class NotificationService {
             if (isDue && !notificationRepository.existsByScheduleIdAndScheduledFor(
                     schedule.getId(), notificationTime)) {
                 String message = createScheduleMessage(schedule);
-                notificationRepository.save(new AiNotification(
-                        schedule.getId(), schedule.getTitle(), notificationTime, message));
+                AiNotification notification = new AiNotification(
+                        schedule.getId(), schedule.getTitle(), notificationTime, message);
+                notification.setUserId(schedule.getUserId());
+                notificationRepository.save(notification);
                 created++;
             }
         }

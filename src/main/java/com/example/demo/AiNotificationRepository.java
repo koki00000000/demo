@@ -7,5 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface AiNotificationRepository extends JpaRepository<AiNotification, Long> {
     boolean existsByScheduleIdAndScheduledFor(Long scheduleId, java.time.LocalDateTime scheduledFor);
     List<AiNotification> findAllByOrderByCreatedAtDesc();
+    List<AiNotification> findAllByUserIdOrderByCreatedAtDesc(Long userId);
     void deleteByScheduleId(Long scheduleId);
 }

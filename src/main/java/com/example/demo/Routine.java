@@ -15,6 +15,7 @@ public class Routine {
     private String title;
     private boolean completed;
     private LocalDate completedDate;
+    private Long userId;
 
     public Routine() {}
     public Routine(String title) { this.title = title; }
@@ -25,4 +26,6 @@ public class Routine {
         this.completed = completed;
         this.completedDate = completed ? LocalDate.now() : null;
     }
+    public Long getUserId() { return userId; }
+    public void setUserId(Long userId) { this.userId = userId; }
 }

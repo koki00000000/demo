@@ -20,6 +20,7 @@ public class Schedule {
     private int notifyMinutesBefore = 30;
     private String priority = "medium";
     private String category = "その他";
+    private Long userId;
 
     public Schedule() {
     }
@@ -54,6 +55,8 @@ public class Schedule {
     public int getNotifyMinutesBefore() { return notifyMinutesBefore; }
     public String getPriority() { return priority; }
     public String getCategory() { return category; }
+    public Long getUserId() { return userId; }
+    public void setUserId(Long userId) { this.userId = userId; }
     public void setDateTime(LocalDateTime dateTime) { this.dateTime = dateTime; }
     public void setEndDateTime(LocalDateTime endDateTime) { this.endDateTime = endDateTime; }
     public void update(String title, LocalDateTime dateTime, LocalDateTime endDateTime,

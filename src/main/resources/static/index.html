@@ -76,6 +76,12 @@
     .gap-card { padding:14px; border-radius:10px; background:#eef7f1; border-left:4px solid #2f9e62; }
     #timetablePanel { display:none; margin-top:12px; padding:14px; border-radius:10px; background:#f3f7ff; }
     #timetablePanel.open { display:block; }
+    .auth-screen { display:none; min-height:75vh; place-items:center; }
+    .auth-screen.open { display:grid; }
+    .auth-card { width:min(430px,100%); margin:auto; }
+    .auth-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+    .login-user { display:flex; align-items:center; gap:10px; }
+    body.auth-required > header, body.auth-required > #countdowns, body.auth-required > main, body.auth-required > .assistant-toggle { display:none; }
     @media (max-width:767px) {
       body { width:auto; max-width:none; margin:16px auto; padding:0 12px; }
       header { align-items:flex-start; } header h1 { font-size:25px; }
@@ -93,9 +99,18 @@
 </head>
 <body>
   <div id="loading" class="loading"><div class="loading-card"><div class="spinner"></div><b>AI秘書を準備中...</b><p class="small">スリープからの復帰には少し時間がかかることがあります</p></div></div>
+  <div id="authScreen" class="auth-screen">
+    <section class="auth-card">
+      <h1>AI予定秘書</h1><p class="hint">自分専用のカレンダーへログイン</p>
+      <label>ユーザー名<input id="authUsername" type="text" autocomplete="username" minlength="3" maxlength="30"></label>
+      <label>パスワード<input id="authPassword" type="password" autocomplete="current-password" minlength="8"></label>
+      <div class="auth-actions"><button onclick="submitAuth('login')">ログイン</button><button class="secondary" onclick="submitAuth('register')">アカウント作成</button></div>
+      <p id="authStatus" class="small">新規登録のパスワードは8文字以上にしてください。</p>
+    </section>
+  </div>
   <header>
     <div><h1>AI予定秘書</h1><p class="hint">予定の少し前に、AIが準備を手伝う通知を作ります。</p></div>
-    <button onclick="openGoalModal()">＋ 目標を作る</button>
+    <div class="login-user"><span id="loginUser"></span><button class="secondary" onclick="logout()">ログアウト</button><button onclick="openGoalModal()">＋ 目標を作る</button></div>
   </header>
   <div id="countdowns" class="countdown-wrap"></div>
 
@@ -285,6 +300,33 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
+    function showAuth(message='') {
+      document.body.classList.add('auth-required');
+      document.querySelector('#authScreen').classList.add('open');
+      document.querySelector('#authUsername').value=localStorage.getItem('loginUsername') || '';
+      if(message) document.querySelector('#authStatus').textContent=message;
+    }
+    function showApp(user) {
+      localStorage.setItem('loginUsername',user.username);
+      document.querySelector('#loginUser').textContent=`ログイン中: ${user.username}さん`;
+      document.body.classList.remove('auth-required');
+      document.querySelector('#authScreen').classList.remove('open');
+    }
+    async function submitAuth(action) {
+      const username=document.querySelector('#authUsername').value.trim();
+      const password=document.querySelector('#authPassword').value;
+      const status=document.querySelector('#authStatus'); status.textContent=action==='register'?'アカウントを作成中…':'ログイン中…';
+      try {
+        const response=await fetch(`/api/auth/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+        if(!response.ok) throw new Error(response.status===409?'そのユーザー名はすでに使われています。':response.status===401?'ユーザー名またはパスワードが違います。':'ユーザー名は3文字以上、パスワードは8文字以上にしてください。');
+        showApp(await response.json()); document.querySelector('#authPassword').value=''; await initializeApp();
+      } catch(error) { status.textContent=error.message; }
+    }
+    async function logout() {
+      await fetch('/api/auth/logout',{method:'POST'});
+      schedulesCache=[]; routinesCache=[]; localStorage.removeItem('loginUsername');
+      showAuth('ログアウトしました。');
+    }
     const format = v => new Date(v).toLocaleString('ja-JP', { dateStyle:'short', timeStyle:'short' });
     let lastGoalPlan = '';
     let schedulesCache = [];
@@ -578,16 +620,15 @@
     }
     function writeCache(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
 
-    async function fetchList(url, cacheKey) {
+    async function fetchList(url) {
       try {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`${response.status}`);
         const data = await response.json();
-        if (cacheKey) writeCache(cacheKey, data);
         return data;
       } catch (_) {
         setAssistantMessage('保存データを読み込めませんでした。アプリが起動しているか確認して、もう一度更新してください。');
-        return cacheKey ? readCache(cacheKey) : null;
+        return null;
       }
     }
 
@@ -665,11 +706,13 @@
     }
 
     function lineSettings() {
-      return {accessToken:localStorage.getItem('lineAccessToken') || '', userId:localStorage.getItem('lineUserId') || ''};
+      const owner=localStorage.getItem('loginUsername') || 'guest';
+      return {accessToken:localStorage.getItem(`${owner}:lineAccessToken`) || '', userId:localStorage.getItem(`${owner}:lineUserId`) || ''};
     }
     async function saveLineSettings() {
-      localStorage.setItem('lineAccessToken',document.querySelector('#lineAccessToken').value.trim());
-      localStorage.setItem('lineUserId',document.querySelector('#lineUserId').value.trim());
+      const owner=localStorage.getItem('loginUsername') || 'guest';
+      localStorage.setItem(`${owner}:lineAccessToken`,document.querySelector('#lineAccessToken').value.trim());
+      localStorage.setItem(`${owner}:lineUserId`,document.querySelector('#lineUserId').value.trim());
       const status=document.querySelector('#lineStatus'); const settings=lineSettings();
       if(!settings.accessToken||!settings.userId){status.textContent='TokenとUser IDを入力してください。';return false;}
       status.textContent='サーバーへ保存中…';
@@ -697,7 +740,8 @@
 
     async function checkScheduleReminders() {
       const now = Date.now();
-      const sent = new Set(JSON.parse(localStorage.getItem('sentScheduleNotifications') || '[]'));
+      const reminderKey=`${localStorage.getItem('loginUsername') || 'guest'}:sentScheduleNotifications`;
+      const sent = new Set(JSON.parse(localStorage.getItem(reminderKey) || '[]'));
       for (const schedule of schedulesCache) {
         const notificationTime = new Date(schedule.dateTime).getTime() - schedule.notifyMinutesBefore * 60000;
         const key = `${schedule.id}:${notificationTime}`;
@@ -714,14 +758,14 @@
           if(attempted) sent.add(key);
         }
       }
-      localStorage.setItem('sentScheduleNotifications', JSON.stringify([...sent].slice(-100)));
+      localStorage.setItem(reminderKey, JSON.stringify([...sent].slice(-100)));
       lastReminderCheck = now;
     }
 
     async function load() {
       const [goals, todos, routines] = await Promise.all([
-        fetchList('/api/goals', 'goalsCache'), fetchList('/api/todos/today', 'todosCache'),
-        fetchList('/api/routines', 'routinesCache'), loadEvents()
+        fetchList('/api/goals'), fetchList('/api/todos/today'),
+        fetchList('/api/routines'), loadEvents()
       ]);
       if (goals) document.querySelector('#goals').innerHTML = goals.map(g =>
         `<div class="notification">
@@ -862,11 +906,11 @@
     }
     async function addRoutine() {
       const input = document.querySelector('#routineInput'); if (!input.value.trim()) return;
-      const title=input.value.trim(); const previous=[...routinesCache]; routinesCache.push({id:-Date.now(),title,completed:false}); writeCache('routinesCache',routinesCache); renderRoutines(); input.value='';
-      const response=await fetch('/api/routines',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title})}); if(!response.ok){routinesCache=previous;writeCache('routinesCache',previous);renderRoutines();return alert('ルーティンを保存できませんでした。');} await load();
+      const title=input.value.trim(); const previous=[...routinesCache]; routinesCache.push({id:-Date.now(),title,completed:false}); renderRoutines(); input.value='';
+      const response=await fetch('/api/routines',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title})}); if(!response.ok){routinesCache=previous;renderRoutines();return alert('ルーティンを保存できませんでした。');} await load();
     }
-    function toggleRoutine(id) { const item=routinesCache.find(item=>item.id===id); if(!item)return; const previous=item.completed; item.completed=!item.completed; writeCache('routinesCache',routinesCache); renderRoutines(); fetch(`/api/routines/${id}/complete`,{method:'PATCH'}).then(response=>{if(!response.ok)throw new Error();}).catch(()=>{item.completed=previous;writeCache('routinesCache',routinesCache);renderRoutines();}); }
-    function deleteRoutine(id) { const previous=[...routinesCache]; routinesCache=routinesCache.filter(item=>item.id!==id); writeCache('routinesCache',routinesCache); renderRoutines(); fetch(`/api/routines/${id}`,{method:'DELETE'}).then(response=>{if(!response.ok)throw new Error();}).catch(()=>{routinesCache=previous;writeCache('routinesCache',previous);renderRoutines();}); }
+    function toggleRoutine(id) { const item=routinesCache.find(item=>item.id===id); if(!item)return; const previous=item.completed; item.completed=!item.completed; renderRoutines(); fetch(`/api/routines/${id}/complete`,{method:'PATCH'}).then(response=>{if(!response.ok)throw new Error();}).catch(()=>{item.completed=previous;renderRoutines();}); }
+    function deleteRoutine(id) { const previous=[...routinesCache]; routinesCache=routinesCache.filter(item=>item.id!==id); renderRoutines(); fetch(`/api/routines/${id}`,{method:'DELETE'}).then(response=>{if(!response.ok)throw new Error();}).catch(()=>{routinesCache=previous;renderRoutines();}); }
 
     const materialsDb = new Promise((resolve,reject) => {
       const request=indexedDB.open('aiScheduler',1);
@@ -962,10 +1006,8 @@
       const title = document.querySelector('#goalTitle').value.trim();
       const requirements = document.querySelector('#goalRequirements').value.trim();
       if (!title || !lastGoalPlan) return alert('先にAIへ計画を相談してください。');
-      const previousGoals=readCache('goalsCache');
-      writeCache('goalsCache', [{id:-Date.now(),title,requirements,plan:lastGoalPlan}, ...previousGoals]);
       const response = await fetch('/api/goals', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({title, requirements, plan:lastGoalPlan}) });
-      if (!response.ok) { writeCache('goalsCache',previousGoals); return alert('目標を保存できませんでした。'); }
+      if (!response.ok) return alert('目標を保存できませんでした。');
       alert('目標を開始しました！ 次はこの計画を毎日のTodoにしていきましょう。');
       closeGoalModal(); document.querySelector('#goalTitle').value = ''; document.querySelector('#goalRequirements').value = '';
       document.querySelector('#proposalResult').style.display = 'none'; document.querySelector('#startGoalButton').style.display = 'none'; lastGoalPlan = ''; load();
@@ -981,21 +1023,29 @@
     }
     async function deleteGoal(id) {
       if (!confirm('この目標と関連するTodoを削除しますか？')) return;
-      writeCache('goalsCache', readCache('goalsCache').filter(item=>item.id!==id));
       const result = await (await fetch(`/api/goals/${id}`, {method:'DELETE'})).json();
       alert(result.message); load();
     }
     async function toggleTodo(id) { await fetch(`/api/todos/${id}/complete`, {method:'PATCH'}); load(); }
-    document.addEventListener('DOMContentLoaded', async () => {
+    async function initializeApp() {
       document.querySelector('#assistantTone').value = localStorage.getItem('assistantTone') || 'friendly';
       restoreLineSettings();
       updateNotificationStatus();
       updateTimetablePeriods();
-      setCurrentTime(); routinesCache=readCache('routinesCache'); renderRoutines(); renderMaterials();
+      setCurrentTime(); routinesCache=[]; renderRoutines(); renderMaterials();
       try { await load(); } finally { document.querySelector('#loading').classList.add('hidden'); }
+    }
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const response=await fetch('/api/auth/me',{cache:'no-store'});
+        if(!response.ok) throw new Error();
+        showApp(await response.json()); await initializeApp();
+      } catch (_) {
+        document.querySelector('#loading').classList.add('hidden'); showAuth();
+      }
       setInterval(checkScheduleReminders, 60000);
       setInterval(checkBreakSuggestion, 60000);
-      setInterval(loadEvents, 15000);
+      setInterval(()=>{ if(!document.body.classList.contains('auth-required')) loadEvents(); }, 15000);
     });
   </script>
   <div class="modal" id="reportModal">

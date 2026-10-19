@@ -19,6 +19,7 @@ public class AiNotification {
     private LocalDateTime scheduledFor;
     private LocalDateTime createdAt;
     private String message;
+    private Long userId;
 
     public AiNotification() {
     }
@@ -37,4 +38,6 @@ public class AiNotification {
     public LocalDateTime getScheduledFor() { return scheduledFor; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public String getMessage() { return message; }
+    public Long getUserId() { return userId; }
+    public void setUserId(Long userId) { this.userId = userId; }
 }

@@ -24,10 +24,10 @@ public class MorningScheduleService {
 
     @Scheduled(cron = "0 0 7 * * *", zone = "Asia/Tokyo")
     public void sendMorningSchedule() {
-        settingsRepository.findFirstByOrderByIdAsc().ifPresent(settings -> {
+        for (LineSettings settings : settingsRepository.findAllByOwnerUserIdIsNotNull()) {
             LocalDate today = LocalDate.now(ZoneId.of("Asia/Tokyo"));
-            List<Schedule> schedules = scheduleRepository.findAllByDateTimeBetweenOrderByDateTimeAsc(
-                    today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+            List<Schedule> schedules = scheduleRepository.findAllByUserIdAndDateTimeBetweenOrderByDateTimeAsc(
+                    settings.getOwnerUserId(), today.atStartOfDay(), today.plusDays(1).atStartOfDay());
             StringBuilder message = new StringBuilder("おはようございます！本日の予定は")
                     .append(schedules.size()).append("件です。");
             DateTimeFormatter time = DateTimeFormatter.ofPattern("H:mm");
@@ -39,6 +39,6 @@ public class MorningScheduleService {
                         .append(schedule.getDateTime().format(time)).append("〜").append(end.format(time)).append("】");
             }
             lineNotificationService.send(settings.getAccessToken(), settings.getUserId(), message.toString());
-        });
+        }
     }
 }

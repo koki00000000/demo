@@ -24,6 +24,7 @@ public class Goal {
     private String plan;
     private LocalDateTime createdAt;
     private boolean active;
+    private Long userId;
 
     public Goal() {
     }
@@ -42,4 +43,6 @@ public class Goal {
     public String getPlan() { return plan; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public boolean isActive() { return active; }
+    public Long getUserId() { return userId; }
+    public void setUserId(Long userId) { this.userId = userId; }
 }
