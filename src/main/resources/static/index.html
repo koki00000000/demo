@@ -27,10 +27,11 @@
     .calendar-day.selected { background:#edf4ff; box-shadow:inset 0 0 0 2px #2764d9; }
     .calendar-day.empty { border:0; background:transparent; cursor:default; }
     .calendar-event { display:block; margin-top:4px; padding:2px 4px; border-radius:4px; background:#e8eefb; color:#2454aa; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .app-grid { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(320px,1fr); grid-template-areas:"calendar schedules" "form routines" "form todos" "goals goals" "materials materials" "sync sync" "line line" "notices notices"; gap:18px 22px; align-items:start; }
+    .app-grid { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(320px,1fr); grid-template-areas:"calendar schedules" "form routines" "form todos" "gaps gaps" "dashboard timer" "goals goals" "materials materials" "sync sync" "line line" "notices notices"; gap:18px 22px; align-items:start; }
     .app-grid > section { margin:0; }
     .area-calendar { grid-area:calendar; } .area-form { grid-area:form; }
     .area-schedules { grid-area:schedules; } .area-routines { grid-area:routines; } .area-todos { grid-area:todos; }
+    .area-gaps { grid-area:gaps; } .area-dashboard { grid-area:dashboard; } .area-timer { grid-area:timer; }
     .area-goals { grid-area:goals; } .area-materials { grid-area:materials; } .area-sync { grid-area:sync; } .area-line { grid-area:line; } .area-notices { grid-area:notices; }
     .assistant-panel { position:fixed; right:20px; bottom:78px; z-index:20; width:min(390px,calc(100vw - 40px)); max-height:72vh; overflow:auto; display:flex; align-items:flex-start; gap:14px; background:linear-gradient(135deg,#f7f3ff,#eef5ff); transform:translateX(calc(100% + 40px)); opacity:0; transition:.25s ease; }
     .assistant-panel.open { transform:translateX(0); opacity:1; }
@@ -61,6 +62,20 @@
     .spinner { width:32px; height:32px; margin:0 auto 12px; border:4px solid #dce6fa; border-top-color:#2764d9; border-radius:50%; animation:spin .8s linear infinite; }
     @keyframes spin { to { transform:rotate(360deg); } }
     .routine-row,.material-row { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid #edf0f5; }
+    .chart-wrap { position:relative; max-width:520px; height:330px; margin:auto; }
+    .timer-display { margin:16px 0; font-size:42px; font-weight:800; letter-spacing:2px; text-align:center; font-variant-numeric:tabular-nums; }
+    .timer-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; }
+    body.focus-mode { max-width:760px; background:#eef4ff; }
+    body.focus-mode header, body.focus-mode .app-grid > section:not(.area-timer), body.focus-mode .assistant-toggle { display:none; }
+    body.focus-mode .app-grid { display:block; }
+    body.focus-mode .area-timer { margin-top:12vh; box-shadow:0 14px 50px #183b7822; }
+    .countdown-wrap { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin:18px 0; }
+    .countdown-card { padding:16px; border-radius:12px; color:#7c2530; background:linear-gradient(135deg,#fff0f1,#fff8e8); border-left:5px solid #e5484d; box-shadow:0 2px 10px #20304012; }
+    .countdown-card strong { display:block; margin-top:5px; font-size:22px; }
+    .gap-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:10px; }
+    .gap-card { padding:14px; border-radius:10px; background:#eef7f1; border-left:4px solid #2f9e62; }
+    #timetablePanel { display:none; margin-top:12px; padding:14px; border-radius:10px; background:#f3f7ff; }
+    #timetablePanel.open { display:block; }
     @media (max-width:767px) {
       body { width:auto; max-width:none; margin:16px auto; padding:0 12px; }
       header { align-items:flex-start; } header h1 { font-size:25px; }
@@ -82,6 +97,7 @@
     <div><h1>AI予定秘書</h1><p class="hint">予定の少し前に、AIが準備を手伝う通知を作ります。</p></div>
     <button onclick="openGoalModal()">＋ 目標を作る</button>
   </header>
+  <div id="countdowns" class="countdown-wrap"></div>
 
   <main class="app-grid">
   <section id="assistantPanel" class="assistant-panel area-assistant" aria-live="polite">
@@ -131,7 +147,7 @@
   </section>
 
   <section id="scheduleForm" class="area-form">
-    <h2>予定を追加</h2>
+    <div class="calendar-head"><h2>予定を追加</h2><button class="secondary" onclick="toggleTimetableMode()">時間割モード</button></div>
     <input id="title" type="text" placeholder="例：資格試験の勉強">
     <div class="time-range">
       <label>開始時刻<input id="dateTime" type="datetime-local"></label>
@@ -151,6 +167,15 @@
     <input id="minutes" type="number" min="1" value="30"> 分前に通知
     <label>優先度 <select id="priority"><option value="high">高</option><option value="medium" selected>中</option><option value="low">低</option></select></label>
     <button onclick="addSchedule()">追加</button>
+    <div id="timetablePanel">
+      <h3>大学の授業をサクッと登録</h3>
+      <input id="classTitle" type="text" placeholder="授業名（例：プログラミング基礎）">
+      <div class="inline-tools">
+        <label>曜日 <select id="classWeekday"><option value="1">月</option><option value="2">火</option><option value="3">水</option><option value="4">木</option><option value="5">金</option><option value="6">土</option></select></label>
+        <label>時限 <select id="classPeriod"><option value="1">1限 9:00〜10:30</option><option value="2">2限 10:40〜12:10</option><option value="3">3限 13:00〜14:30</option><option value="4">4限 14:40〜16:10</option><option value="5">5限 16:20〜17:50</option></select></label>
+        <button onclick="addTimetableClass()">次の該当日に登録</button>
+      </div>
+    </div>
     <div class="inline-tools">
       <label><b>スクショから予定追加：</b><input id="scheduleImage" type="file" accept="image/*" onchange="analyzeScheduleImage(this)"></label>
       <span id="imageStatus" class="small"></span>
@@ -161,6 +186,26 @@
     <h2>毎日のルーティン</h2>
     <div class="inline-tools"><input id="routineInput" type="text" placeholder="例：英単語を10分復習"><button onclick="addRoutine()">追加</button></div>
     <div id="routines"></div>
+  </section>
+  <section class="area-gaps">
+    <h2>今日の空き時間</h2>
+    <div id="freeTimeSuggestions" class="gap-cards"><p class="small">予定を確認しています。</p></div>
+  </section>
+  <section class="area-dashboard">
+    <div class="calendar-head"><h2>時間配分</h2><select id="chartPeriod" onchange="renderTimeChart()"><option value="week">今週</option><option value="month">今月</option></select></div>
+    <div class="chart-wrap"><canvas id="timeChart" aria-label="カテゴリ別時間配分"></canvas></div>
+    <p id="chartSummary" class="small"></p>
+  </section>
+  <section class="area-timer">
+    <h2>勉強タイマー</h2>
+    <input id="studyContent" type="text" placeholder="例：Java Silver 配列の復習">
+    <div id="studyTimerDisplay" class="timer-display">00:00:00</div>
+    <div class="timer-actions">
+      <button id="timerStartButton" onclick="startStudyTimer()">勉強スタート</button>
+      <button id="timerPauseButton" class="secondary" onclick="pauseStudyTimer()" disabled>一時停止</button>
+      <button id="timerFinishButton" class="secondary" onclick="finishStudyTimer()" disabled>終了して記録</button>
+    </div>
+    <p id="timerStatus" class="small">内容を入力してスタートしてください。</p>
   </section>
   <section class="area-materials">
     <h2>授業・課題メモ</h2>
@@ -216,6 +261,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
     const format = v => new Date(v).toLocaleString('ja-JP', { dateStyle:'short', timeStyle:'short' });
     let lastGoalPlan = '';
@@ -226,6 +272,110 @@
     let lastReminderCheck = Date.now() - 60000;
     let nextBreakSuggestionAt = Date.now() + 50 * 60000;
     let reverseProposal = null;
+    let timeChart = null;
+    let studyElapsedMs = 0;
+    let studyStartedAt = 0;
+    let studyTimerInterval = null;
+    let studyTimerRunning = false;
+    let leftDuringStudy = false;
+
+    function eventCategory(title) {
+      if (/勉強|学習|資格|試験|復習|読書|課題|問題集|Java|数学|英語/i.test(title)) return '勉強';
+      if (/授業|講義|ゼミ|大学|学校/i.test(title)) return '授業';
+      if (/バイト|仕事|勤務|シフト|会議/i.test(title)) return 'バイト・仕事';
+      if (/移動|乗換|電車|駅|通学|通勤/i.test(title)) return '移動';
+      return 'その他';
+    }
+
+    function chartRange() {
+      const now=new Date(); const start=new Date(now); const end=new Date(now);
+      if(document.querySelector('#chartPeriod').value==='month') {
+        start.setDate(1); start.setHours(0,0,0,0); end.setMonth(end.getMonth()+1,1); end.setHours(0,0,0,0);
+      } else {
+        const mondayOffset=(now.getDay()+6)%7; start.setDate(now.getDate()-mondayOffset); start.setHours(0,0,0,0); end.setTime(start.getTime()+7*24*60*60000);
+      }
+      return [start.getTime(),end.getTime()];
+    }
+
+    function renderTimeChart() {
+      if(!document.querySelector('#timeChart')) return;
+      const [rangeStart,rangeEnd]=chartRange(); const totals={};
+      for(const event of schedulesCache) {
+        const start=Math.max(new Date(event.dateTime).getTime(),rangeStart); const end=Math.min(new Date(scheduleEnd(event)).getTime(),rangeEnd);
+        if(end<=start) continue; const category=eventCategory(event.title); totals[category]=(totals[category]||0)+(end-start)/3600000;
+      }
+      const labels=Object.keys(totals); const values=Object.values(totals).map(value=>Math.round(value*10)/10);
+      const summary=document.querySelector('#chartSummary'); summary.textContent=values.length ? `合計 ${values.reduce((a,b)=>a+b,0).toFixed(1)}時間` : 'この期間に集計できる予定はありません。';
+      if(typeof Chart==='undefined') { summary.textContent+=' Chart.jsを読み込めませんでした。ネット接続を確認してください。'; return; }
+      if(timeChart) timeChart.destroy();
+      timeChart=new Chart(document.querySelector('#timeChart'),{type:'pie',data:{labels:labels.length?labels:['予定なし'],datasets:[{data:values.length?values:[1],backgroundColor:values.length?['#4f7dd9','#7a55e8','#e5a000','#2f9e62','#9aa4b5']:['#e6eaf0']}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'},tooltip:{callbacks:{label:context=>values.length?`${context.label}: ${context.raw}時間`:'予定なし'}}}}});
+    }
+
+    function renderCountdowns() {
+      const today=new Date(); today.setHours(0,0,0,0);
+      const targets=schedulesCache.filter(event=>(event.priority==='high'||/テスト|試験|課題|中間考査|期末/i.test(event.title))&&new Date(event.dateTime)>=today).sort((a,b)=>new Date(a.dateTime)-new Date(b.dateTime)).slice(0,4);
+      document.querySelector('#countdowns').innerHTML=targets.map(event=>{
+        const eventDay=new Date(event.dateTime); eventDay.setHours(0,0,0,0); const days=Math.ceil((eventDay-today)/(24*60*60000));
+        return `<div class="countdown-card">${event.title}<strong>${days===0?'今日です！':`あと ${days} 日`}</strong><span class="small">${scheduleRange(event)}</span></div>`;
+      }).join('');
+    }
+
+    function renderFreeTimeSuggestions() {
+      const todayKey=localDateKey(new Date()); const events=schedulesCache.filter(event=>localDateKey(event.dateTime)===todayKey).sort((a,b)=>new Date(a.dateTime)-new Date(b.dateTime)); const gaps=[];
+      for(let i=0;i<events.length-1;i++) { const start=new Date(scheduleEnd(events[i])); const end=new Date(events[i+1].dateTime); if(end-start>=2*60*60000) gaps.push({start,end}); }
+      const container=document.querySelector('#freeTimeSuggestions');
+      container.innerHTML=gaps.map(gap=>`<div class="gap-card"><b>${timeOnly(gap.start)}〜${timeOnly(gap.end)} は空いています</b><p>勉強や課題の時間に充てますか？</p><button onclick="registerFreeTime('${toLocalInput(gap.start)}','${toLocalInput(gap.end)}')">勉強・課題として登録</button></div>`).join('') || '<p class="small">今日、予定間に2時間以上の空きはありません。</p>';
+      if(gaps.length) setAssistantMessage(`今日の${timeOnly(gaps[0].start)}〜${timeOnly(gaps[0].end)}は空いています。勉強や課題の時間に充てますか？`);
+    }
+
+    async function registerFreeTime(dateTime,endDateTime) {
+      const title='勉強・課題';
+      const response=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,dateTime,endDateTime,notifyMinutesBefore:30,priority:'medium'})});
+      if(!response.ok)return alert('予定を登録できませんでした。'); selectedDateKey=localDateKey(dateTime); await loadEvents();
+    }
+
+    function toggleTimetableMode() { document.querySelector('#timetablePanel').classList.toggle('open'); }
+    async function addTimetableClass() {
+      const title=document.querySelector('#classTitle').value.trim(); if(!title)return alert('授業名を入力してください。');
+      const weekday=Number(document.querySelector('#classWeekday').value); const period=Number(document.querySelector('#classPeriod').value);
+      const times={1:['09:00','10:30'],2:['10:40','12:10'],3:['13:00','14:30'],4:['14:40','16:10'],5:['16:20','17:50']}[period];
+      const date=new Date(); let add=(weekday-date.getDay()+7)%7; if(add===0 && date.toTimeString().slice(0,5)>=times[0])add=7; date.setDate(date.getDate()+add);
+      const dateKey=localDateKey(date); const event={title:`授業：${title}`,dateTime:`${dateKey}T${times[0]}`,endDateTime:`${dateKey}T${times[1]}`,notifyMinutesBefore:30,priority:'medium'};
+      const response=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(event)}); if(!response.ok)return alert('授業を登録できませんでした。');
+      document.querySelector('#classTitle').value=''; selectedDateKey=dateKey; calendarMonth=new Date(date.getFullYear(),date.getMonth(),1); await loadEvents();
+    }
+
+    function studyElapsedNow() { return studyElapsedMs+(studyTimerRunning ? Date.now()-studyStartedAt : 0); }
+    function formatStopwatch(milliseconds) {
+      const seconds=Math.floor(milliseconds/1000); const pad=value=>String(value).padStart(2,'0');
+      return `${pad(Math.floor(seconds/3600))}:${pad(Math.floor(seconds%3600/60))}:${pad(seconds%60)}`;
+    }
+    function updateStudyTimer() { document.querySelector('#studyTimerDisplay').textContent=formatStopwatch(studyElapsedNow()); }
+    function startStudyTimer() {
+      if(!document.querySelector('#studyContent').value.trim()) return alert('勉強内容を入力してください。');
+      if(studyTimerRunning) return; studyStartedAt=Date.now(); studyTimerRunning=true; document.body.classList.add('focus-mode');
+      studyTimerInterval=setInterval(updateStudyTimer,250); document.querySelector('#timerStartButton').disabled=true; document.querySelector('#timerPauseButton').disabled=false; document.querySelector('#timerFinishButton').disabled=false; document.querySelector('#timerStatus').textContent='集中モードで計測中です。';
+    }
+    function pauseStudyTimer() {
+      if(!studyTimerRunning) return; studyElapsedMs+=Date.now()-studyStartedAt; studyTimerRunning=false; clearInterval(studyTimerInterval); updateStudyTimer();
+      document.querySelector('#timerStartButton').disabled=false; document.querySelector('#timerStartButton').textContent='再開'; document.querySelector('#timerPauseButton').disabled=true; document.querySelector('#timerStatus').textContent='一時停止中です。';
+    }
+    async function finishStudyTimer() {
+      if(studyTimerRunning) pauseStudyTimer();
+      if(studyElapsedMs<1000) return alert('まだ計測されていません。');
+      const content=document.querySelector('#studyContent').value.trim(); const end=new Date(); const recordedMs=Math.max(60000,studyElapsedMs); const start=new Date(end.getTime()-recordedMs);
+      const event={title:`勉強実績：${content}`,dateTime:toLocalInput(start),endDateTime:toLocalInput(end),notifyMinutesBefore:30,priority:'medium'};
+      const response=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(event)});
+      if(!response.ok) return alert('勉強時間を保存できませんでした。');
+      document.body.classList.remove('focus-mode'); studyElapsedMs=0; studyStartedAt=0; clearInterval(studyTimerInterval); updateStudyTimer();
+      document.querySelector('#studyContent').value=''; document.querySelector('#timerStartButton').disabled=false; document.querySelector('#timerStartButton').textContent='勉強スタート'; document.querySelector('#timerPauseButton').disabled=true; document.querySelector('#timerFinishButton').disabled=true; document.querySelector('#timerStatus').textContent='記録しました。お疲れさまでした！';
+      selectedDateKey=localDateKey(end); await loadEvents(); setAssistantMessage(`「${content}」を${formatStopwatch(recordedMs)}取り組みました。お疲れさまでした！`);
+    }
+
+    document.addEventListener('visibilitychange',()=>{
+      if(document.hidden && studyTimerRunning) { leftDuringStudy=true; if('Notification' in window && Notification.permission==='granted') new Notification('勉強タイマー計測中',{body:'タイマーが動いています。勉強画面に戻りましょう！'}); }
+      if(!document.hidden && leftDuringStudy && studyTimerRunning) { leftDuringStudy=false; alert('勉強タイマーの計測中にタブを切り替えました。集中モードへ戻りましょう。'); }
+    });
 
     function toggleAssistant(force) {
       const panel = document.querySelector('#assistantPanel');
@@ -436,10 +586,14 @@
     function lineSettings() {
       return {accessToken:localStorage.getItem('lineAccessToken') || '', userId:localStorage.getItem('lineUserId') || ''};
     }
-    function saveLineSettings() {
+    async function saveLineSettings() {
       localStorage.setItem('lineAccessToken',document.querySelector('#lineAccessToken').value.trim());
       localStorage.setItem('lineUserId',document.querySelector('#lineUserId').value.trim());
-      document.querySelector('#lineStatus').textContent='設定を保存しました。';
+      const status=document.querySelector('#lineStatus'); const settings=lineSettings();
+      if(!settings.accessToken||!settings.userId){status.textContent='TokenとUser IDを入力してください。';return false;}
+      status.textContent='サーバーへ保存中…';
+      try { const result=await postLine('/api/line/settings',settings); status.textContent=result.message; return true; }
+      catch(_){status.textContent='LINE設定をサーバーへ保存できませんでした。';return false;}
     }
     function restoreLineSettings() {
       const settings=lineSettings(); document.querySelector('#lineAccessToken').value=settings.accessToken; document.querySelector('#lineUserId').value=settings.userId;
@@ -449,7 +603,7 @@
       if(!response.ok) throw new Error(); return response.json();
     }
     async function testLineNotification() {
-      saveLineSettings(); const status=document.querySelector('#lineStatus'); status.textContent='テスト送信中…';
+      if(!await saveLineSettings())return; const status=document.querySelector('#lineStatus'); status.textContent='テスト送信中…';
       try { const result=await postLine('/api/line/test',lineSettings()); status.textContent=result.message; }
       catch (_) { status.textContent='送信できませんでした。TokenとUser IDを確認してください。'; }
     }
@@ -515,7 +669,7 @@
         const response=await fetch('/api/events',{cache:'no-store'});
         if(!response.ok) throw new Error();
         schedulesCache=await response.json();
-        renderCalendar(); renderScheduleList();
+        renderCalendar(); renderScheduleList(); renderTimeChart(); renderCountdowns(); renderFreeTimeSuggestions();
       } catch (_) {
         setAssistantMessage('サーバーから予定を取得できませんでした。接続を確認してください。');
       }

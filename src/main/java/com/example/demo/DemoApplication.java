@@ -29,6 +29,7 @@ public class DemoApplication {
     private final RoutineRepository routineRepository;
     private final NotificationService notificationService;
     private final LineNotificationService lineNotificationService;
+    private final LineSettingsRepository lineSettingsRepository;
 
     public DemoApplication(ScheduleRepository scheduleRepository,
             AiNotificationRepository notificationRepository,
@@ -36,7 +37,8 @@ public class DemoApplication {
             TodoRepository todoRepository,
             RoutineRepository routineRepository,
             NotificationService notificationService,
-            LineNotificationService lineNotificationService) {
+            LineNotificationService lineNotificationService,
+            LineSettingsRepository lineSettingsRepository) {
         this.scheduleRepository = scheduleRepository;
         this.notificationRepository = notificationRepository;
         this.goalRepository = goalRepository;
@@ -44,6 +46,7 @@ public class DemoApplication {
         this.routineRepository = routineRepository;
         this.notificationService = notificationService;
         this.lineNotificationService = lineNotificationService;
+        this.lineSettingsRepository = lineSettingsRepository;
     }
 
     public static void main(String[] args) {
@@ -122,6 +125,15 @@ public class DemoApplication {
         lineNotificationService.send(request.accessToken(), request.userId(),
                 "【AI予定秘書】\n予定の時間になりました！\n" + scheduleTitle);
         return Map.of("message", "LINEへ通知を送りました。");
+    }
+
+    @PostMapping("/api/line/settings")
+    public Map<String, String> saveLineSettings(@RequestBody LineMessageRequest request) {
+        LineSettings settings = lineSettingsRepository.findFirstByOrderByIdAsc()
+                .orElseGet(() -> new LineSettings(request.accessToken(), request.userId()));
+        settings.update(request.accessToken(), request.userId());
+        lineSettingsRepository.save(settings);
+        return Map.of("message", "LINE設定をサーバーへ保存しました。毎朝7:00に配信します。");
     }
 
     @PostMapping("/api/assistant/image-schedules")
