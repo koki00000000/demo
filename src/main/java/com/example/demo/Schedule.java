@@ -19,6 +19,7 @@ public class Schedule {
     private LocalDateTime endDateTime;
     private int notifyMinutesBefore = 30;
     private String priority = "medium";
+    private String category = "その他";
 
     public Schedule() {
     }
@@ -33,11 +34,17 @@ public class Schedule {
 
     public Schedule(String title, LocalDateTime dateTime, LocalDateTime endDateTime,
             int notifyMinutesBefore, String priority) {
+        this(title, dateTime, endDateTime, notifyMinutesBefore, priority, "その他");
+    }
+
+    public Schedule(String title, LocalDateTime dateTime, LocalDateTime endDateTime,
+            int notifyMinutesBefore, String priority, String category) {
         this.title = title;
         this.dateTime = dateTime;
         this.endDateTime = endDateTime == null ? dateTime.plusHours(1) : endDateTime;
         this.notifyMinutesBefore = notifyMinutesBefore;
         this.priority = priority == null ? "medium" : priority;
+        this.category = category == null || category.isBlank() ? "その他" : category;
     }
 
     public Long getId() { return id; }
@@ -46,6 +53,16 @@ public class Schedule {
     public LocalDateTime getEndDateTime() { return endDateTime; }
     public int getNotifyMinutesBefore() { return notifyMinutesBefore; }
     public String getPriority() { return priority; }
+    public String getCategory() { return category; }
     public void setDateTime(LocalDateTime dateTime) { this.dateTime = dateTime; }
     public void setEndDateTime(LocalDateTime endDateTime) { this.endDateTime = endDateTime; }
+    public void update(String title, LocalDateTime dateTime, LocalDateTime endDateTime,
+            int notifyMinutesBefore, String priority, String category) {
+        this.title = title;
+        this.dateTime = dateTime;
+        this.endDateTime = endDateTime;
+        this.notifyMinutesBefore = notifyMinutesBefore;
+        this.priority = priority == null ? "medium" : priority;
+        this.category = category == null || category.isBlank() ? "その他" : category;
+    }
 }

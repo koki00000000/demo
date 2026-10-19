@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.multipart.MultipartFile;
 
 @SpringBootApplication
@@ -62,7 +63,21 @@ public class DemoApplication {
     public Schedule addSchedule(@RequestBody ScheduleRequest request) {
         return scheduleRepository.save(new Schedule(
                 request.title(), request.dateTime(), request.endDateTime(),
-                request.notifyMinutesBefore(), request.priority()));
+                request.notifyMinutesBefore(), request.priority(), request.category()));
+    }
+
+    @PutMapping({"/api/schedules/{id}", "/api/events/{id}"})
+    public Schedule updateSchedule(@org.springframework.web.bind.annotation.PathVariable Long id,
+            @RequestBody ScheduleRequest request) {
+        if (request.title() == null || request.title().isBlank() || request.dateTime() == null
+                || request.endDateTime() == null || !request.endDateTime().isAfter(request.dateTime())) {
+            throw new IllegalArgumentException("終了時刻は開始時刻より後にしてください。");
+        }
+        Schedule schedule = scheduleRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("予定が見つかりません。"));
+        schedule.update(request.title(), request.dateTime(), request.endDateTime(),
+                request.notifyMinutesBefore(), request.priority(), request.category());
+        return scheduleRepository.save(schedule);
     }
 
     @PatchMapping({"/api/schedules/{id}/time", "/api/events/{id}/time"})
@@ -236,7 +251,7 @@ public class DemoApplication {
     }
 
     public record ScheduleRequest(String title, LocalDateTime dateTime, LocalDateTime endDateTime,
-            int notifyMinutesBefore, String priority) {
+            int notifyMinutesBefore, String priority, String category) {
     }
 
     public record MoveScheduleRequest(LocalDateTime dateTime, LocalDateTime endDateTime) {}
