@@ -409,6 +409,7 @@
     let nextBreakSuggestionAt = Date.now() + 50 * 60000;
     let reverseProposal = null;
     let googleCalendarConnected = false;
+    let googleCalendarConfigured = false;
     let timeChart = null;
     let subjectStudyChart = null;
     let studyElapsedMs = 0;
@@ -1180,21 +1181,35 @@
       try {
         const response=await fetch('/api/google-calendar/status',{cache:'no-store'});
         if(!response.ok) throw new Error();
-        const data=await response.json(); googleCalendarConnected=data.connected;
+        const data=await response.json(); googleCalendarConfigured=data.configured; googleCalendarConnected=data.connected;
         if(!data.configured) {
-          status.textContent='初回設定が必要です（Google CloudのClient IDとClient Secretが未設定）。';
-          connectButton.disabled=true; syncAllButton.disabled=true; syncTodosButton.disabled=true;
+          status.textContent='初回設定が必要です（RenderにGoogle Calendarの認証情報が未設定です）。';
+          connectButton.textContent='設定方法を確認'; connectButton.disabled=false; syncAllButton.disabled=false; syncTodosButton.disabled=false;
         } else if(data.connected) {
           status.textContent='接続済みです。予定とTodoを1件ずつ、またはまとめて送信できます。';
           connectButton.textContent='Googleアカウントを再接続'; connectButton.disabled=false; syncAllButton.disabled=false; syncTodosButton.disabled=false;
         } else {
           status.textContent='未接続です。最初にGoogleアカウントの利用を許可してください。';
-          connectButton.textContent='Googleカレンダーと接続'; connectButton.disabled=false; syncAllButton.disabled=true; syncTodosButton.disabled=true;
+          connectButton.textContent='Googleカレンダーと接続'; connectButton.disabled=false; syncAllButton.disabled=false; syncTodosButton.disabled=false;
         }
         renderScheduleList();
       } catch (_) { status.textContent='接続状態を確認できませんでした。'; }
     }
-    function connectGoogleCalendar() { window.location.href='/api/google-calendar/connect'; }
+    function explainGoogleCalendarState() {
+      if(!googleCalendarConfigured) {
+        alert('RenderのEnvironmentに GOOGLE_CALENDAR_CLIENT_ID、GOOGLE_CALENDAR_CLIENT_SECRET、GOOGLE_CALENDAR_REDIRECT_URI の3つを設定してください。');
+        return false;
+      }
+      if(!googleCalendarConnected) {
+        alert('先に「Googleカレンダーと接続」を押して、Googleアカウントの利用を許可してください。');
+        return false;
+      }
+      return true;
+    }
+    function connectGoogleCalendar() {
+      if(!googleCalendarConfigured) return explainGoogleCalendarState();
+      window.location.href='/api/google-calendar/connect';
+    }
     async function syncGoogleCalendarEvent(id,button) {
       const original=button.textContent; button.disabled=true; button.textContent='送信中…';
       try {
@@ -1206,6 +1221,7 @@
       finally { button.disabled=false; button.textContent=original; }
     }
     async function syncAllGoogleCalendar() {
+      if(!explainGoogleCalendarState()) return;
       const button=document.querySelector('#googleCalendarSyncAllButton'); button.disabled=true; button.textContent='送信中…';
       try {
         const response=await fetch('/api/google-calendar/sync-all',{method:'POST'});
@@ -1216,6 +1232,7 @@
       finally { button.disabled=false; button.textContent='今後の未送信予定をまとめて送る'; }
     }
     async function syncTodoGoogleCalendar(id,button) {
+      if(!explainGoogleCalendarState()) return;
       const original=button.textContent; button.disabled=true; button.textContent='送信中…';
       try {
         const response=await fetch(`/api/google-calendar/todos/${id}/sync`,{method:'POST'});
@@ -1225,6 +1242,7 @@
       finally { button.disabled=false; button.textContent=original; }
     }
     async function syncTodayTodosGoogleCalendar() {
+      if(!explainGoogleCalendarState()) return;
       const button=document.querySelector('#googleCalendarSyncTodosButton'); button.disabled=true; button.textContent='送信中…';
       try {
         const response=await fetch('/api/google-calendar/todos/today/sync-all',{method:'POST'});
