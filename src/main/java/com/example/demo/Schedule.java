@@ -21,6 +21,8 @@ public class Schedule {
     private String priority = "medium";
     private String category = "その他";
     private Long userId;
+    private String googleCalendarEventId;
+    private LocalDateTime googleCalendarSyncedAt;
 
     public Schedule() {
     }
@@ -56,9 +58,15 @@ public class Schedule {
     public String getPriority() { return priority; }
     public String getCategory() { return category; }
     public Long getUserId() { return userId; }
+    public String getGoogleCalendarEventId() { return googleCalendarEventId; }
+    public LocalDateTime getGoogleCalendarSyncedAt() { return googleCalendarSyncedAt; }
     public void setUserId(Long userId) { this.userId = userId; }
-    public void setDateTime(LocalDateTime dateTime) { this.dateTime = dateTime; }
-    public void setEndDateTime(LocalDateTime endDateTime) { this.endDateTime = endDateTime; }
+    public void setDateTime(LocalDateTime dateTime) { this.dateTime = dateTime; this.googleCalendarSyncedAt = null; }
+    public void setEndDateTime(LocalDateTime endDateTime) { this.endDateTime = endDateTime; this.googleCalendarSyncedAt = null; }
+    public void markGoogleCalendarSynced(String eventId) {
+        this.googleCalendarEventId = eventId;
+        this.googleCalendarSyncedAt = LocalDateTime.now();
+    }
     public void update(String title, LocalDateTime dateTime, LocalDateTime endDateTime,
             int notifyMinutesBefore, String priority, String category) {
         this.title = title;
@@ -67,5 +75,6 @@ public class Schedule {
         this.notifyMinutesBefore = notifyMinutesBefore;
         this.priority = priority == null ? "medium" : priority;
         this.category = category == null || category.isBlank() ? "その他" : category;
+        this.googleCalendarSyncedAt = null;
     }
 }

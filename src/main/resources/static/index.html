@@ -27,11 +27,13 @@
     .calendar-day.selected { background:#edf4ff; box-shadow:inset 0 0 0 2px #2764d9; }
     .calendar-day.empty { border:0; background:transparent; cursor:default; }
     .calendar-event { display:block; margin-top:4px; padding:2px 4px; border-radius:4px; background:#e8eefb; color:#2454aa; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .app-grid { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(320px,1fr); grid-template-areas:"calendar schedules" "form routines" "form todos" "gaps gaps" "dashboard timer" "goals goals" "materials materials" "sync sync" "line line" "notices notices"; gap:18px 22px; align-items:start; }
+    .app-grid { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(320px,1fr); grid-template-areas:"calendar schedules" "form routines" "form todos" "gaps gaps" "learning learning" "review review" "dashboard timer" "goals goals" "materials materials" "sync sync" "line line" "notices notices"; gap:18px 22px; align-items:start; }
     .app-grid > section { margin:0; }
     .area-calendar { grid-area:calendar; } .area-form { grid-area:form; }
     .area-schedules { grid-area:schedules; } .area-routines { grid-area:routines; } .area-todos { grid-area:todos; }
     .area-gaps { grid-area:gaps; } .area-dashboard { grid-area:dashboard; } .area-timer { grid-area:timer; }
+    .area-review { grid-area:review; }
+    .area-learning { grid-area:learning; }
     .area-goals { grid-area:goals; } .area-materials { grid-area:materials; } .area-sync { grid-area:sync; } .area-line { grid-area:line; } .area-notices { grid-area:notices; }
     .assistant-panel { position:fixed; right:20px; bottom:78px; z-index:20; width:min(390px,calc(100vw - 40px)); max-height:72vh; overflow:auto; display:flex; align-items:flex-start; gap:14px; background:linear-gradient(135deg,#f7f3ff,#eef5ff); transform:translateX(calc(100% + 40px)); opacity:0; transition:.25s ease; }
     .assistant-panel.open { transform:translateX(0); opacity:1; }
@@ -72,16 +74,35 @@
     .countdown-wrap { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; margin:18px 0; }
     .countdown-card { padding:16px; border-radius:12px; color:#7c2530; background:linear-gradient(135deg,#fff0f1,#fff8e8); border-left:5px solid #e5484d; box-shadow:0 2px 10px #20304012; }
     .countdown-card strong { display:block; margin-top:5px; font-size:22px; }
+    .morning-checklist { margin:18px 0; padding:22px 24px; border:2px solid #f2b84b; background:linear-gradient(135deg,#fff9df,#fff3b8); box-shadow:0 8px 24px #b6811828; }
+    .morning-checklist h2 { margin:0; font-size:24px; }
+    .morning-checklist .hint { margin:5px 0 12px; color:#72540f; font-weight:700; }
+    .morning-checklist-items { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 18px; }
+    .morning-check-item { display:flex; align-items:flex-start; gap:10px; padding:11px 12px; border-radius:10px; background:#ffffffb8; font-weight:700; line-height:1.45; cursor:pointer; }
+    .morning-check-item input { flex:0 0 auto; width:20px; height:20px; margin:1px 0 0; accent-color:#2764d9; }
+    .morning-check-item.done span { color:#687386; text-decoration:line-through; }
+    .sync-badge { display:inline-block; margin-left:6px; padding:2px 7px; border-radius:999px; background:#edf4ff; color:#2454aa; font-size:12px; font-weight:700; }
+    .sync-badge.pending { background:#fff3d6; color:#8a5a00; }
     .gap-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:10px; }
     .gap-card { padding:14px; border-radius:10px; background:#eef7f1; border-left:4px solid #2f9e62; }
     #timetablePanel { display:none; margin-top:12px; padding:14px; border-radius:10px; background:#f3f7ff; }
     #timetablePanel.open { display:block; }
+    .review-flow { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:8px; padding-left:22px; line-height:1.55; }
+    .review-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 14px; }
+    .review-form textarea { min-height:72px; }
+    .learning-progress { height:10px; overflow:hidden; border-radius:999px; background:#e6eaf0; }
+    .learning-progress span { display:block; height:100%; background:#2764d9; transition:.25s; }
+    .learning-weeks { display:grid; grid-template-columns:repeat(auto-fit,minmax(255px,1fr)); gap:10px; margin-top:14px; }
+    .learning-week { padding:14px; border:1px solid #dde3ee; border-radius:10px; background:#f8faff; }
+    .learning-week.done { background:#eef8f1; border-color:#7bc89b; }
+    .learning-week h3 { margin:0 0 6px; }
+    .learning-week code { display:block; margin:7px 0; color:#2454aa; white-space:normal; }
     .auth-screen { display:none; min-height:75vh; place-items:center; }
     .auth-screen.open { display:grid; }
     .auth-card { width:min(430px,100%); margin:auto; }
     .auth-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
     .login-user { display:flex; align-items:center; gap:10px; }
-    body.auth-required > header, body.auth-required > #countdowns, body.auth-required > main, body.auth-required > .assistant-toggle { display:none; }
+    body.auth-required > header, body.auth-required > #morningChecklist, body.auth-required > #countdowns, body.auth-required > main, body.auth-required > .assistant-toggle { display:none; }
     @media (max-width:767px) {
       body { width:auto; max-width:none; margin:16px auto; padding:0 12px; }
       header { align-items:flex-start; } header h1 { font-size:25px; }
@@ -94,6 +115,9 @@
       input[type=datetime-local] { width:100%; }
       .time-range { grid-template-columns:1fr; } .time-range > span { display:none; }
       .calendar-day { min-height:62px; padding:4px; }
+      .review-form { grid-template-columns:1fr; }
+      .morning-checklist { padding:18px 16px; }
+      .morning-checklist-items { grid-template-columns:1fr; }
     }
   </style>
 </head>
@@ -112,6 +136,11 @@
     <div><h1>AI予定秘書</h1><p class="hint">予定の少し前に、AIが準備を手伝う通知を作ります。</p></div>
     <div class="login-user"><span id="loginUser"></span><button class="secondary" onclick="logout()">ログアウト</button><button onclick="openGoalModal()">＋ 目標を作る</button></div>
   </header>
+  <section id="morningChecklist" class="morning-checklist" aria-labelledby="morningChecklistTitle">
+    <h2 id="morningChecklistTitle">☀️ PCを開いたら、まずこの4つ</h2>
+    <p class="hint">全部やる必要はありません。最初の1つを決めるところから始めましょう。</p>
+    <div id="morningChecklistItems" class="morning-checklist-items"><p class="small">今日のチェック項目を準備しています。</p></div>
+  </section>
   <div id="countdowns" class="countdown-wrap"></div>
 
   <main class="app-grid">
@@ -207,6 +236,37 @@
     <h2>今日の空き時間</h2>
     <div id="freeTimeSuggestions" class="gap-cards"><p class="small">予定を確認しています。</p></div>
   </section>
+  <section class="area-learning">
+    <div class="calendar-head"><div><h2>AI作品で学ぶ・8週間ロードマップ</h2><p class="hint">2027年春のインターンへ：AIが作ったコードを理解し、自分で変更・検証できるようになる</p></div><strong id="learningProgressText">0/8 完了</strong></div>
+    <div class="learning-progress"><span id="learningProgressBar" style="width:0%"></span></div>
+    <p>週2回・合計60分が基本です。1回目はコードを読み、2回目は自分で変更して動かします。忙しい週は15分だけでもよく、遅れを翌週へ上乗せする必要はありません。</p>
+    <div class="inline-tools">
+      <label>1回目 <select id="studyDay1"><option value="1">月</option><option value="2" selected>火</option><option value="3">水</option><option value="4">木</option><option value="5">金</option><option value="6">土</option><option value="0">日</option></select>曜日 <input id="studyTime1" type="time" value="19:00"></label>
+      <label>2回目 <select id="studyDay2"><option value="1">月</option><option value="2">火</option><option value="3">水</option><option value="4" selected>木</option><option value="5">金</option><option value="6">土</option><option value="0">日</option></select>曜日 <input id="studyTime2" type="time" value="19:00"></label>
+      <button onclick="addLearningSessions()">次の2回を予定に追加</button>
+    </div>
+    <p id="learningScheduleStatus" class="small"></p>
+    <div id="learningWeeks" class="learning-weeks"></div>
+    <div class="guide" style="margin-top:14px"><b>30分の進め方</b><br>最初の10分：自分で読み、動きを予想する → 次の10分：AIへ解説と確認問題を頼む → 最後の10分：自分で1か所変更して動作確認する</div>
+    <details style="margin-top:12px"><summary><b>AIへ質問するときの文章</b></summary><p class="notification">このコードを初心者向けに解説して。特に変数と関数の役割を知りたい。完成した修正コードはまだ出さないで。理解を確認する質問も一つ出して。</p></details>
+  </section>
+  <section id="weeklyReviewSection" class="area-review">
+    <div class="calendar-head"><div><h2>週次振り返り</h2><p id="weeklyReviewDate" class="hint">毎週日曜日 18:00〜18:30</p></div><button class="secondary" onclick="selectCurrentReviewSunday()">今週を開く</button></div>
+    <ol class="review-flow">
+      <li>週1回、5〜10分で予定を固定する</li><li>やったこと・困ったことを箇条書きする</li>
+      <li>前回のTryと、できた・できなかった理由を振り返る</li><li>次のTryは1つだけ。「いつ、何をするか」まで決める</li>
+      <li>ここへ記録を残し、翌週は続きから始める</li>
+    </ol>
+    <div class="review-form">
+      <label>やったこと<textarea id="reviewDid" placeholder="箇条書きでOK"></textarea></label>
+      <label>困ったこと<textarea id="reviewTrouble" placeholder="箇条書きでOK"></textarea></label>
+      <label>前回のTry<select id="reviewPreviousResult"><option value="">選択してください</option><option>できた</option><option>一部できた</option><option>できなかった</option></select></label>
+      <label>その理由<textarea id="reviewReason"></textarea></label>
+      <label>次のTry（1つだけ）<textarea id="reviewNextTry"></textarea></label>
+      <label>いつやるか<input id="reviewWhen" type="text" placeholder="例：火曜19:00から30分"></label>
+    </div>
+    <div class="inline-tools"><button onclick="saveWeeklyReview()">振り返りを保存</button><span id="weeklyReviewStatus" class="small"></span></div>
+  </section>
   <section class="area-dashboard">
     <div class="calendar-head"><h2>時間配分</h2><select id="chartPeriod" onchange="renderTimeChart()"><option value="week">今週</option><option value="month">今月</option></select></div>
     <div class="chart-wrap"><canvas id="timeChart" aria-label="カテゴリ別時間配分"></canvas></div>
@@ -235,6 +295,16 @@
   </section>
   <section class="area-sync">
     <h2>予定の整理・カレンダー連携</h2>
+    <div class="guide">
+      <b>Googleカレンダーへ直接送信</b>
+      <p id="googleCalendarStatus" class="small">接続状態を確認しています…</p>
+      <div class="inline-tools">
+        <button id="googleCalendarConnectButton" onclick="connectGoogleCalendar()">Googleカレンダーと接続</button>
+        <button id="googleCalendarSyncAllButton" class="secondary" onclick="syncAllGoogleCalendar()" disabled>今後の未送信予定をまとめて送る</button>
+        <button id="googleCalendarSyncTodosButton" class="secondary" onclick="syncTodayTodosGoogleCalendar()" disabled>今日のTodoをまとめて送る</button>
+      </div>
+      <p class="small">片方向同期です。アプリで削除してもGoogleカレンダーの予定は削除されません。編集後は再送信してください。</p>
+    </div>
     <div class="inline-tools">
       <button onclick="compressSchedules()">重なった予定を自動再配置</button>
       <button class="secondary" onclick="exportIcs()">iCal（.ics）を書き出す</button>
@@ -242,7 +312,7 @@
       <button id="icsImportButton" onclick="importIcs()" disabled>取り込む</button>
       <span id="icsStatus" class="small"></span>
     </div>
-    <p class="small">書き出した.icsはGoogleカレンダーの「インポート」から読み込めます。自動再配置は予定の長さを保ったまま、重なりを後ろへ移動します。</p>
+    <p class="small">直接接続を使わない場合は、書き出した.icsをGoogleカレンダーの「インポート」から読み込めます。自動再配置は予定の長さを保ったまま、重なりを後ろへ移動します。</p>
   </section>
   <section class="area-notices">
     <h2>ブラウザ通知</h2>
@@ -331,11 +401,14 @@
     let lastGoalPlan = '';
     let schedulesCache = [];
     let routinesCache = [];
+    let weeklyReviewsCache = [];
+    let completedLearningWeeks = new Set();
     let selectedDateKey = localDateKey(new Date());
     let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     let lastReminderCheck = Date.now() - 60000;
     let nextBreakSuggestionAt = Date.now() + 50 * 60000;
     let reverseProposal = null;
+    let googleCalendarConnected = false;
     let timeChart = null;
     let subjectStudyChart = null;
     let studyElapsedMs = 0;
@@ -344,6 +417,54 @@
     let studyTimerRunning = false;
     let leftDuringStudy = false;
     let editingEventId = null;
+
+    const learningRoadmap = [
+      ['コードの全体像を知る','主要なファイル3つの役割を説明できる','index.html / DemoApplication.java / Schedule.java'],
+      ['変数と条件分岐','数値を変更し、結果を予想できる','通知時間・優先度・カテゴリ判定'],
+      ['関数・メソッド','関数の入力と出力を説明できる','addSchedule() / renderCalendar() / JavaのAPIメソッド'],
+      ['配列と繰り返し','要素を1つ追加・変更できる','schedulesCache / map() / filter()'],
+      ['エラーとデバッグ','エラーを1つ自分で追跡できる','ブラウザのConsole / Spring Bootのログ'],
+      ['機能を1つ改造','変更理由を説明できる','表示・時間計算・設定値から小さく1つ'],
+      ['AIコードレビュー','修正前後の違いを理解する','AIの指摘をそのまま信じず、動作で検証'],
+      ['GitHubに記録','自分が担当した変更を説明できる','READMEへ変更内容・学び・確認方法を書く']
+    ];
+
+    function renderLearningRoadmap() {
+      const done=completedLearningWeeks.size;
+      document.querySelector('#learningProgressText').textContent=`${done}/8 完了`;
+      document.querySelector('#learningProgressBar').style.width=`${done/8*100}%`;
+      document.querySelector('#learningWeeks').innerHTML=learningRoadmap.map((week,index)=>{
+        const number=index+1; const completed=completedLearningWeeks.has(number);
+        return `<article class="learning-week ${completed?'done':''}"><h3>第${number}週：${week[0]}</h3><p>${week[1]}</p><code>このアプリで見る場所：${week[2]}</code><button class="${completed?'secondary':''}" onclick="toggleLearningWeek(${number})">${completed?'✓ 完了済み':'完了にする'}</button></article>`;
+      }).join('');
+    }
+
+    async function toggleLearningWeek(week) {
+      completedLearningWeeks.has(week)?completedLearningWeeks.delete(week):completedLearningWeeks.add(week);
+      renderLearningRoadmap();
+      const completedWeeks=[...completedLearningWeeks].sort((a,b)=>a-b).join(',');
+      const response=await fetch('/api/learning-progress',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({completedWeeks})});
+      if(!response.ok){alert('進捗を保存できませんでした。');await load();}
+    }
+
+    function nextStudyDate(day,time) {
+      const now=new Date(); const result=new Date(now); const difference=(Number(day)-now.getDay()+7)%7;
+      result.setDate(now.getDate()+difference); const [hour,minute]=time.split(':').map(Number); result.setHours(hour,minute,0,0);
+      if(result<=now) result.setDate(result.getDate()+7);
+      return result;
+    }
+
+    async function addLearningSessions() {
+      const nextWeek=learningRoadmap.findIndex((_,index)=>!completedLearningWeeks.has(index+1))+1;
+      const week=nextWeek || 8; const settings=[[document.querySelector('#studyDay1').value,document.querySelector('#studyTime1').value,'コードを読んで理解する'],[document.querySelector('#studyDay2').value,document.querySelector('#studyTime2').value,'自分で変更して動かす']];
+      const status=document.querySelector('#learningScheduleStatus'); status.textContent='予定を追加中…';
+      for(const [day,time,action] of settings) {
+        const start=nextStudyDate(day,time); const end=new Date(start.getTime()+30*60000);
+        const response=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:`開発学習 第${week}週：${action}`,dateTime:toLocalInput(start),endDateTime:toLocalInput(end),notifyMinutesBefore:30,priority:'medium',category:'勉強'})});
+        if(!response.ok){status.textContent='予定を追加できませんでした。';return;}
+      }
+      status.textContent='次の2回（各30分）をカレンダーに追加しました。'; await loadEvents();
+    }
 
     function eventCategory(title) {
       if (/勉強|学習|資格|試験|復習|読書|課題|問題集|Java|数学|英語/i.test(title)) return '勉強';
@@ -661,6 +782,41 @@
       return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
     }
 
+    function isSunday(dateKey) { return new Date(`${dateKey}T12:00`).getDay()===0; }
+    function currentReviewSunday() {
+      const date=new Date(); date.setHours(12,0,0,0);
+      date.setDate(date.getDate()+((7-date.getDay())%7));
+      return localDateKey(date);
+    }
+    function selectCurrentReviewSunday() {
+      selectedDateKey=currentReviewSunday();
+      calendarMonth=new Date(`${selectedDateKey}T12:00`);
+      calendarMonth=new Date(calendarMonth.getFullYear(),calendarMonth.getMonth(),1);
+      renderCalendar(); renderScheduleList(); renderWeeklyReview();
+      document.querySelector('#weeklyReviewSection').scrollIntoView({behavior:'smooth',block:'start'});
+    }
+    function renderWeeklyReview() {
+      const reviewDate=isSunday(selectedDateKey)?selectedDateKey:currentReviewSunday();
+      const review=weeklyReviewsCache.find(item=>item.reviewDate===reviewDate) || {};
+      document.querySelector('#weeklyReviewDate').textContent=`${reviewDate.replaceAll('-','/')}（日）18:00〜18:30`;
+      document.querySelector('#reviewDid').value=review.did || '';
+      document.querySelector('#reviewTrouble').value=review.trouble || '';
+      document.querySelector('#reviewPreviousResult').value=review.previousTryResult || '';
+      document.querySelector('#reviewReason').value=review.reason || '';
+      document.querySelector('#reviewNextTry').value=review.nextTry || '';
+      document.querySelector('#reviewWhen').value=review.whenToDo || '';
+      document.querySelector('#weeklyReviewStatus').textContent=review.updatedAt?'保存済み':'';
+    }
+    async function saveWeeklyReview() {
+      const reviewDate=isSunday(selectedDateKey)?selectedDateKey:currentReviewSunday();
+      const payload={reviewDate,did:document.querySelector('#reviewDid').value.trim(),trouble:document.querySelector('#reviewTrouble').value.trim(),previousTryResult:document.querySelector('#reviewPreviousResult').value,reason:document.querySelector('#reviewReason').value.trim(),nextTry:document.querySelector('#reviewNextTry').value.trim(),whenToDo:document.querySelector('#reviewWhen').value.trim()};
+      const status=document.querySelector('#weeklyReviewStatus'); status.textContent='保存中…';
+      const response=await fetch('/api/weekly-reviews',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if(!response.ok){status.textContent='保存できませんでした。';return;}
+      const saved=await response.json(); weeklyReviewsCache=weeklyReviewsCache.filter(item=>item.reviewDate!==reviewDate); weeklyReviewsCache.unshift(saved);
+      status.textContent='保存しました。翌週はここから続けられます。';
+    }
+
     function transitLinks(title) {
       const route = title.match(/(.+?駅)\s*(?:➔|→|から)\s*(.+?駅)/);
       if (!route && !/移動|乗換|電車/.test(title)) return '';
@@ -673,7 +829,9 @@
       const events=schedulesCache.filter(item=>localDateKey(item.dateTime)===selectedDateKey).sort((a,b)=>new Date(a.dateTime)-new Date(b.dateTime));
       const selected=new Date(`${selectedDateKey}T00:00`);
       document.querySelector('#scheduleListTitle').textContent=`${selected.getMonth()+1}月${selected.getDate()}日の予定`;
-      document.querySelector('#schedules').innerHTML=events.map(s=>`<li class="schedule-card priority-${s.priority || 'medium'}"><b>${s.title}</b><br><span class="small">${scheduleRange(s)}／${scheduleCategory(s)}／優先度：${{high:'高',medium:'中',low:'低'}[s.priority || 'medium']}／${s.notifyMinutesBefore}分前に通知</span>${transitLinks(s.title)}<br><button class="secondary" onclick="openEditEvent(${s.id})">✏️ 編集</button> <button class="secondary" onclick="deleteSchedule(${s.id})">削除</button></li>`).join('') || '<li class="small">この日の予定はありません。</li>';
+      let html=events.map(s=>`<li class="schedule-card priority-${s.priority || 'medium'}"><b>${s.title}</b>${s.googleCalendarSyncedAt?'<span class="sync-badge">Google送信済み</span>':'<span class="sync-badge pending">未送信</span>'}<br><span class="small">${scheduleRange(s)}／${scheduleCategory(s)}／優先度：${{high:'高',medium:'中',low:'低'}[s.priority || 'medium']}／${s.notifyMinutesBefore}分前に通知</span>${transitLinks(s.title)}<br><button class="secondary" onclick="openEditEvent(${s.id})">✏️ 編集</button> <button class="secondary" onclick="deleteSchedule(${s.id})">削除</button> ${googleCalendarConnected?`<button class="secondary" onclick="syncGoogleCalendarEvent(${s.id},this)">${s.googleCalendarSyncedAt?'Googleへ再送信':'Googleへ送信'}</button>`:''}</li>`).join('');
+      if(isSunday(selectedDateKey)) html+=`<li class="schedule-card priority-medium"><b>週次振り返り</b><br><span class="small">${selectedDateKey.replaceAll('-','/')} 18:00〜18:30／毎週日曜日</span><br><button class="secondary" onclick="document.querySelector('#weeklyReviewSection').scrollIntoView({behavior:'smooth'})">記録を開く</button></li>`;
+      document.querySelector('#schedules').innerHTML=html || '<li class="small">この日の予定はありません。</li>';
     }
 
     function renderCalendar() {
@@ -689,7 +847,8 @@
       for (let day = 1; day <= lastDay; day++) {
         const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const events = schedulesCache.filter(schedule => localDateKey(schedule.dateTime) === dateKey);
-        html += `<button class="calendar-day ${dateKey === todayKey ? 'today' : ''} ${dateKey === selectedDateKey ? 'selected' : ''}" onclick="selectCalendarDate('${dateKey}')"><b>${day}</b>${events.map(event => `<span class="calendar-event priority-${event.priority || 'medium'}" role="button" title="この予定を編集" onclick="event.stopPropagation();openEditEvent(${event.id})">${timeOnly(event.dateTime)}〜${timeOnly(scheduleEnd(event))} ${event.title}</span>`).join('')}</button>`;
+        const weeklyReview=isSunday(dateKey)?'<span class="calendar-event priority-medium">18:00〜18:30 週次振り返り</span>':'';
+        html += `<button class="calendar-day ${dateKey === todayKey ? 'today' : ''} ${dateKey === selectedDateKey ? 'selected' : ''}" onclick="selectCalendarDate('${dateKey}')"><b>${day}</b>${events.map(event => `<span class="calendar-event priority-${event.priority || 'medium'}" role="button" title="この予定を編集" onclick="event.stopPropagation();openEditEvent(${event.id})">${timeOnly(event.dateTime)}〜${timeOnly(scheduleEnd(event))} ${event.title}</span>`).join('')}${weeklyReview}</button>`;
       }
       document.querySelector('#calendar').innerHTML = html;
     }
@@ -701,7 +860,7 @@
 
     function selectCalendarDate(dateKey) {
       selectedDateKey=dateKey;
-      renderCalendar(); renderScheduleList();
+      renderCalendar(); renderScheduleList(); renderWeeklyReview();
       document.querySelector('.area-schedules').scrollIntoView({behavior:'smooth',block:'start'});
     }
 
@@ -758,14 +917,24 @@
           if(attempted) sent.add(key);
         }
       }
+      const today=new Date();
+      if(today.getDay()===0) {
+        const reviewTime=new Date(today); reviewTime.setHours(18,0,0,0);
+        const key=`weekly-review:${localDateKey(today)}`;
+        if(reviewTime.getTime()>lastReminderCheck && reviewTime.getTime()<=now && !sent.has(key)) {
+          if('Notification' in window && Notification.permission==='granted') new Notification('AI予定秘書',{body:'18:00〜18:30は週次振り返りです。前回のTryを確認し、次のTryを1つ決めましょう！'});
+          if(lineSettings().accessToken && lineSettings().userId) sendLineNotification({title:'週次振り返り',dateTime:reviewTime.toISOString(),endDateTime:new Date(reviewTime.getTime()+30*60000).toISOString()}).catch(()=>{});
+          sent.add(key);
+        }
+      }
       localStorage.setItem(reminderKey, JSON.stringify([...sent].slice(-100)));
       lastReminderCheck = now;
     }
 
     async function load() {
-      const [goals, todos, routines] = await Promise.all([
+      const [goals, todos, routines, weeklyReviews, learningProgress] = await Promise.all([
         fetchList('/api/goals'), fetchList('/api/todos/today'),
-        fetchList('/api/routines'), loadEvents()
+        fetchList('/api/routines'), fetchList('/api/weekly-reviews'), fetchList('/api/learning-progress'), loadEvents()
       ]);
       if (goals) document.querySelector('#goals').innerHTML = goals.map(g =>
         `<div class="notification">
@@ -786,8 +955,13 @@
   </button>
 </div>`).join('') || '<p class="small">目標はまだありません。</p>';
       if (todos) document.querySelector('#todos').innerHTML = todos.map(t =>
-        `<p><label><input type="checkbox" ${t.completed ? 'checked' : ''} onchange="toggleTodo(${t.id})"> <span style="${t.completed ? 'text-decoration:line-through;color:#687386' : ''}">${t.title}</span></label> <button class="secondary" onclick="createReverseSchedule('${encodeURIComponent(t.title)}', this)">逆算スケジュール作成</button></p>`).join('') || '<p class="small">今日のTodoはまだありません。</p>';
+        `<p><label><input type="checkbox" ${t.completed ? 'checked' : ''} onchange="toggleTodo(${t.id})"> <span style="${t.completed ? 'text-decoration:line-through;color:#687386' : ''}">${t.title}</span></label> <button class="secondary" onclick="createReverseSchedule('${encodeURIComponent(t.title)}', this)">逆算スケジュール作成</button> ${googleCalendarConnected?`<button class="secondary" onclick="syncTodoGoogleCalendar(${t.id},this)">Googleへ送る</button>`:''}</p>`).join('') || '<p class="small">今日のTodoはまだありません。</p>';
       if (routines) { routinesCache = routines; renderRoutines(); }
+      if (weeklyReviews) { weeklyReviewsCache=weeklyReviews; renderWeeklyReview(); renderScheduleList(); }
+      if (learningProgress) {
+        completedLearningWeeks=new Set(String(learningProgress.completedWeeks || '').split(',').filter(Boolean).map(Number));
+        renderLearningRoadmap();
+      }
     }
     async function loadEvents() {
       try {
@@ -901,8 +1075,19 @@
       setAssistantMessage('カレンダーへ追加しました。開始30分前に通知します。');
       reverseProposal = null; await load();
     }
+    const morningRoutineTitles = [
+      'PCを開く前に、今日やることを1つ決める',
+      'ゲームを開きたくなったら、何がきっかけだったか確認する',
+      '勉強を15〜30分だけ進める',
+      'ゲームをした後は、後悔だけでなく楽しめたかも振り返る'
+    ];
+    function renderMorningChecklist() {
+      const items=morningRoutineTitles.map(title=>routinesCache.find(item=>item.title===title)).filter(Boolean);
+      document.querySelector('#morningChecklistItems').innerHTML=items.map(item=>`<label class="morning-check-item ${item.completed?'done':''}"><input type="checkbox" ${item.completed?'checked':''} onchange="toggleRoutine(${item.id})"><span>${item.title}</span></label>`).join('') || '<p class="small">毎日のチェック項目を読み込めませんでした。</p>';
+    }
     function renderRoutines() {
       document.querySelector('#routines').innerHTML = routinesCache.map(item => `<div class="routine-row"><input type="checkbox" ${item.completed?'checked':''} onchange="toggleRoutine(${item.id})"><span>${item.title}</span><button class="secondary" onclick="deleteRoutine(${item.id})">削除</button></div>`).join('') || '<p class="small">ルーティンはまだありません。</p>';
+      renderMorningChecklist();
     }
     async function addRoutine() {
       const input = document.querySelector('#routineInput'); if (!input.value.trim()) return;
@@ -987,6 +1172,67 @@
         setAssistantMessage('.icsファイルを読み込めませんでした。Googleカレンダーから書き出したファイルか確認してください。'); toggleAssistant(true);
       } finally { input.value=''; button.disabled=true; }
     }
+    async function loadGoogleCalendarStatus() {
+      const status=document.querySelector('#googleCalendarStatus');
+      const connectButton=document.querySelector('#googleCalendarConnectButton');
+      const syncAllButton=document.querySelector('#googleCalendarSyncAllButton');
+      const syncTodosButton=document.querySelector('#googleCalendarSyncTodosButton');
+      try {
+        const response=await fetch('/api/google-calendar/status',{cache:'no-store'});
+        if(!response.ok) throw new Error();
+        const data=await response.json(); googleCalendarConnected=data.connected;
+        if(!data.configured) {
+          status.textContent='初回設定が必要です（Google CloudのClient IDとClient Secretが未設定）。';
+          connectButton.disabled=true; syncAllButton.disabled=true; syncTodosButton.disabled=true;
+        } else if(data.connected) {
+          status.textContent='接続済みです。予定とTodoを1件ずつ、またはまとめて送信できます。';
+          connectButton.textContent='Googleアカウントを再接続'; connectButton.disabled=false; syncAllButton.disabled=false; syncTodosButton.disabled=false;
+        } else {
+          status.textContent='未接続です。最初にGoogleアカウントの利用を許可してください。';
+          connectButton.textContent='Googleカレンダーと接続'; connectButton.disabled=false; syncAllButton.disabled=true; syncTodosButton.disabled=true;
+        }
+        renderScheduleList();
+      } catch (_) { status.textContent='接続状態を確認できませんでした。'; }
+    }
+    function connectGoogleCalendar() { window.location.href='/api/google-calendar/connect'; }
+    async function syncGoogleCalendarEvent(id,button) {
+      const original=button.textContent; button.disabled=true; button.textContent='送信中…';
+      try {
+        const response=await fetch(`/api/google-calendar/events/${id}/sync`,{method:'POST'});
+        if(!response.ok) throw new Error(await response.text());
+        const result=await response.json(); await loadEvents();
+        setAssistantMessage(result.message); toggleAssistant(true);
+      } catch (error) { alert(error.message || 'Googleカレンダーへ送信できませんでした。'); }
+      finally { button.disabled=false; button.textContent=original; }
+    }
+    async function syncAllGoogleCalendar() {
+      const button=document.querySelector('#googleCalendarSyncAllButton'); button.disabled=true; button.textContent='送信中…';
+      try {
+        const response=await fetch('/api/google-calendar/sync-all',{method:'POST'});
+        if(!response.ok) throw new Error(await response.text());
+        const result=await response.json(); await loadEvents();
+        setAssistantMessage(result.message); toggleAssistant(true);
+      } catch (error) { alert(error.message || 'Googleカレンダーへまとめて送信できませんでした。'); }
+      finally { button.disabled=false; button.textContent='今後の未送信予定をまとめて送る'; }
+    }
+    async function syncTodoGoogleCalendar(id,button) {
+      const original=button.textContent; button.disabled=true; button.textContent='送信中…';
+      try {
+        const response=await fetch(`/api/google-calendar/todos/${id}/sync`,{method:'POST'});
+        if(!response.ok) throw new Error(await response.text());
+        const result=await response.json(); setAssistantMessage(result.message); toggleAssistant(true);
+      } catch (error) { alert(error.message || 'TodoをGoogleカレンダーへ送信できませんでした。'); }
+      finally { button.disabled=false; button.textContent=original; }
+    }
+    async function syncTodayTodosGoogleCalendar() {
+      const button=document.querySelector('#googleCalendarSyncTodosButton'); button.disabled=true; button.textContent='送信中…';
+      try {
+        const response=await fetch('/api/google-calendar/todos/today/sync-all',{method:'POST'});
+        if(!response.ok) throw new Error(await response.text());
+        const result=await response.json(); setAssistantMessage(result.message); toggleAssistant(true);
+      } catch (error) { alert(error.message || '今日のTodoをGoogleカレンダーへ送信できませんでした。'); }
+      finally { button.disabled=false; button.textContent='今日のTodoをまとめて送る'; }
+    }
     function openGoalModal() { document.querySelector('#goalModal').classList.add('open'); }
     function closeGoalModal() { document.querySelector('#goalModal').classList.remove('open'); }
     async function askGoalPlan() {
@@ -1033,7 +1279,17 @@
       updateNotificationStatus();
       updateTimetablePeriods();
       setCurrentTime(); routinesCache=[]; renderRoutines(); renderMaterials();
-      try { await load(); } finally { document.querySelector('#loading').classList.add('hidden'); }
+      try { await Promise.all([load(),loadGoogleCalendarStatus()]); } finally { document.querySelector('#loading').classList.add('hidden'); }
+      const googleResult=new URLSearchParams(location.search).get('googleCalendar');
+      if(googleResult) {
+        history.replaceState({},'',location.pathname);
+        if(googleResult==='connected') { setAssistantMessage('Googleカレンダーと接続しました。予定を送信できます。'); toggleAssistant(true); }
+        else if(googleResult==='not-configured') alert('Googleカレンダーの初回設定がまだ完了していません。');
+        else if(googleResult==='denied') alert('Googleカレンダーの利用が許可されませんでした。もう一度接続して「許可」を選んでください。');
+        else if(googleResult==='session-failed') alert('認証中にログイン状態が切れました。AI予定秘書へログインし直してから、もう一度接続してください。');
+        else if(googleResult==='exchange-failed') alert('Googleの認証コードを接続情報へ交換できませんでした。設定を確認します。');
+        else alert('Googleカレンダーとの接続に失敗しました。もう一度お試しください。');
+      }
     }
     document.addEventListener('DOMContentLoaded', async () => {
       try {

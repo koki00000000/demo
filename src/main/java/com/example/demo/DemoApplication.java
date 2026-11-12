@@ -1,10 +1,12 @@
 package com.example.demo;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Base64;
+import java.util.UUID;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import javax.crypto.SecretKeyFactory;
@@ -24,12 +26,16 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import jakarta.servlet.http.HttpSession;
+import jakarta.servlet.http.HttpServletResponse;
 
 @SpringBootApplication
 @EnableScheduling
 @RestController
 public class DemoApplication {
+    private static final Logger log = LoggerFactory.getLogger(DemoApplication.class);
 
     private final ScheduleRepository scheduleRepository;
     private final AiNotificationRepository notificationRepository;
@@ -40,6 +46,10 @@ public class DemoApplication {
     private final LineNotificationService lineNotificationService;
     private final LineSettingsRepository lineSettingsRepository;
     private final AppUserRepository appUserRepository;
+    private final WeeklyReviewRepository weeklyReviewRepository;
+    private final LearningProgressRepository learningProgressRepository;
+    private final GoogleCalendarService googleCalendarService;
+    private final GoogleCalendarConnectionRepository googleCalendarConnectionRepository;
 
     public DemoApplication(ScheduleRepository scheduleRepository,
             AiNotificationRepository notificationRepository,
@@ -49,7 +59,11 @@ public class DemoApplication {
             NotificationService notificationService,
             LineNotificationService lineNotificationService,
             LineSettingsRepository lineSettingsRepository,
-            AppUserRepository appUserRepository) {
+            AppUserRepository appUserRepository,
+            WeeklyReviewRepository weeklyReviewRepository,
+            LearningProgressRepository learningProgressRepository,
+            GoogleCalendarService googleCalendarService,
+            GoogleCalendarConnectionRepository googleCalendarConnectionRepository) {
         this.scheduleRepository = scheduleRepository;
         this.notificationRepository = notificationRepository;
         this.goalRepository = goalRepository;
@@ -59,6 +73,10 @@ public class DemoApplication {
         this.lineNotificationService = lineNotificationService;
         this.lineSettingsRepository = lineSettingsRepository;
         this.appUserRepository = appUserRepository;
+        this.weeklyReviewRepository = weeklyReviewRepository;
+        this.learningProgressRepository = learningProgressRepository;
+        this.googleCalendarService = googleCalendarService;
+        this.googleCalendarConnectionRepository = googleCalendarConnectionRepository;
     }
 
     public static void main(String[] args) {
@@ -154,6 +172,146 @@ public class DemoApplication {
         notificationRepository.deleteByScheduleId(id);
         scheduleRepository.delete(schedule);
         return Map.of("message", "予定を削除しました。");
+    }
+
+    @GetMapping("/api/google-calendar/status")
+    public Map<String, Boolean> googleCalendarStatus(HttpSession session) {
+        Long userId = currentUserId(session);
+        return Map.of(
+                "configured", googleCalendarService.isConfigured(),
+                "connected", googleCalendarConnectionRepository.findByUserId(userId).isPresent());
+    }
+
+    @GetMapping("/api/google-calendar/connect")
+    public void connectGoogleCalendar(HttpSession session, HttpServletResponse response) throws IOException {
+        currentUserId(session);
+        if (!googleCalendarService.isConfigured()) {
+            response.sendRedirect("/?googleCalendar=not-configured");
+            return;
+        }
+        String state = UUID.randomUUID().toString();
+        session.setAttribute("googleCalendarOAuthState", state);
+        response.sendRedirect(googleCalendarService.authorizationUrl(state));
+    }
+
+    @GetMapping("/api/google-calendar/callback")
+    public void googleCalendarCallback(@RequestParam(required = false) String code,
+            @RequestParam(required = false) String state,
+            @RequestParam(required = false) String error,
+            HttpSession session, HttpServletResponse response) throws IOException {
+        Long userId = currentUserId(session);
+        Object expectedState = session.getAttribute("googleCalendarOAuthState");
+        session.removeAttribute("googleCalendarOAuthState");
+        if (error != null) {
+            log.warn("Google Calendar OAuth was denied: {}", error);
+            response.sendRedirect("/?googleCalendar=denied");
+            return;
+        }
+        if (code == null || expectedState == null || !expectedState.equals(state)) {
+            log.warn("Google Calendar OAuth state validation failed (codePresent={}, sessionStatePresent={}, stateMatched={})",
+                    code != null, expectedState != null, expectedState != null && expectedState.equals(state));
+            response.sendRedirect("/?googleCalendar=session-failed");
+            return;
+        }
+        try {
+            String refreshToken = googleCalendarService.exchangeCode(code);
+            GoogleCalendarConnection connection = googleCalendarConnectionRepository.findByUserId(userId)
+                    .orElseGet(() -> new GoogleCalendarConnection(userId, refreshToken));
+            connection.setRefreshToken(refreshToken);
+            googleCalendarConnectionRepository.save(connection);
+            response.sendRedirect("/?googleCalendar=connected");
+        } catch (Exception exception) {
+            log.error("Google Calendar OAuth code exchange failed: {}", exception.getMessage());
+            response.sendRedirect("/?googleCalendar=exchange-failed");
+        }
+    }
+
+    @PostMapping("/api/google-calendar/events/{id}/sync")
+    public Map<String, Object> syncGoogleCalendarEvent(
+            @org.springframework.web.bind.annotation.PathVariable Long id, HttpSession session) {
+        Long userId = currentUserId(session);
+        Schedule schedule = scheduleRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "予定が見つかりません。"));
+        GoogleCalendarConnection connection = googleCalendarConnectionRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "先にGoogleカレンダーへ接続してください。"));
+        try {
+            GoogleCalendarService.SyncResult result = googleCalendarService.sync(schedule, connection.getRefreshToken());
+            schedule.markGoogleCalendarSynced(result.eventId());
+            scheduleRepository.save(schedule);
+            return Map.of("message", "Googleカレンダーへ送信しました。", "htmlLink", result.htmlLink());
+        } catch (Exception exception) {
+            log.error("Google Calendar event sync failed (scheduleId={}): {}", id, exception.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Googleカレンダーへ送信できませんでした: " + safeGoogleError(exception));
+        }
+    }
+
+    @PostMapping("/api/google-calendar/sync-all")
+    public Map<String, Object> syncAllGoogleCalendarEvents(HttpSession session) {
+        Long userId = currentUserId(session);
+        GoogleCalendarConnection connection = googleCalendarConnectionRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "先にGoogleカレンダーへ接続してください。"));
+        LocalDateTime today = LocalDate.now().atStartOfDay();
+        List<Schedule> targets = scheduleRepository.findAllByUserIdOrderByDateTimeAsc(userId).stream()
+                .filter(schedule -> !schedule.getDateTime().isBefore(today))
+                .filter(schedule -> schedule.getGoogleCalendarSyncedAt() == null)
+                .toList();
+        try {
+            Map<Long, GoogleCalendarService.SyncResult> results = googleCalendarService.syncAll(targets, connection.getRefreshToken());
+            for (Schedule schedule : targets) {
+                schedule.markGoogleCalendarSynced(results.get(schedule.getId()).eventId());
+            }
+            scheduleRepository.saveAll(targets);
+            return Map.of("message", targets.size() + "件をGoogleカレンダーへ送信しました。", "count", targets.size());
+        } catch (Exception exception) {
+            log.error("Google Calendar bulk sync failed: {}", exception.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "Googleカレンダーへ送信できませんでした: " + safeGoogleError(exception));
+        }
+    }
+
+    @PostMapping("/api/google-calendar/todos/{id}/sync")
+    public Map<String, Object> syncGoogleCalendarTodo(
+            @org.springframework.web.bind.annotation.PathVariable Long id, HttpSession session) {
+        Long userId = currentUserId(session);
+        Todo todo = todoRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Todoが見つかりません。"));
+        GoogleCalendarConnection connection = googleCalendarConnectionRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "先にGoogleカレンダーへ接続してください。"));
+        try {
+            GoogleCalendarService.SyncResult result = googleCalendarService.sync(todo, connection.getRefreshToken());
+            return Map.of("message", "TodoをGoogleカレンダーへ送信しました。", "htmlLink", result.htmlLink());
+        } catch (Exception exception) {
+            log.error("Google Calendar todo sync failed (todoId={}): {}", id, exception.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "TodoをGoogleカレンダーへ送信できませんでした: " + safeGoogleError(exception));
+        }
+    }
+
+    @PostMapping("/api/google-calendar/todos/today/sync-all")
+    public Map<String, Object> syncTodayTodosToGoogleCalendar(HttpSession session) {
+        Long userId = currentUserId(session);
+        GoogleCalendarConnection connection = googleCalendarConnectionRepository.findByUserId(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "先にGoogleカレンダーへ接続してください。"));
+        List<Todo> targets = todoRepository.findAllByUserIdAndScheduledDateOrderByCreatedAtAsc(userId, LocalDate.now());
+        try {
+            googleCalendarService.syncAllTodos(targets, connection.getRefreshToken());
+            return Map.of("message", "今日のTodo " + targets.size() + "件をGoogleカレンダーへ送信しました。",
+                    "count", targets.size());
+        } catch (Exception exception) {
+            log.error("Google Calendar todo bulk sync failed: {}", exception.getMessage());
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "TodoをGoogleカレンダーへ送信できませんでした: " + safeGoogleError(exception));
+        }
+    }
+
+    private String safeGoogleError(Exception exception) {
+        String message = exception.getMessage();
+        if (message == null || message.isBlank()) return "Google側から詳細が返りませんでした。";
+        if (message.contains("invalid_grant")) return "接続の有効期限が切れています。Googleアカウントを再接続してください。";
+        if (message.contains("insufficientPermissions") || message.contains("PERMISSION_DENIED"))
+            return "Googleカレンダーへの書き込み権限がありません。再接続してください。";
+        return message.length() > 300 ? message.substring(0, 300) : message;
     }
 
     @GetMapping("/api/notifications")
@@ -323,6 +481,37 @@ public class DemoApplication {
         return Map.of("message", "ルーティンを削除しました。");
     }
 
+    @GetMapping("/api/weekly-reviews")
+    public List<WeeklyReview> weeklyReviews(HttpSession session) {
+        return weeklyReviewRepository.findAllByUserIdOrderByReviewDateDesc(currentUserId(session));
+    }
+
+    @PostMapping("/api/weekly-reviews")
+    public WeeklyReview saveWeeklyReview(@RequestBody WeeklyReviewRequest request, HttpSession session) {
+        Long userId = currentUserId(session);
+        WeeklyReview review = weeklyReviewRepository.findByUserIdAndReviewDate(userId, request.reviewDate())
+                .orElseGet(() -> new WeeklyReview(userId, request.reviewDate()));
+        review.update(request.did(), request.trouble(), request.previousTryResult(), request.reason(),
+                request.nextTry(), request.whenToDo());
+        return weeklyReviewRepository.save(review);
+    }
+
+    @GetMapping("/api/learning-progress")
+    public LearningProgress learningProgress(HttpSession session) {
+        Long userId = currentUserId(session);
+        return learningProgressRepository.findByUserId(userId)
+                .orElseGet(() -> learningProgressRepository.save(new LearningProgress(userId)));
+    }
+
+    @PutMapping("/api/learning-progress")
+    public LearningProgress updateLearningProgress(@RequestBody LearningProgressRequest request, HttpSession session) {
+        Long userId = currentUserId(session);
+        LearningProgress progress = learningProgressRepository.findByUserId(userId)
+                .orElseGet(() -> new LearningProgress(userId));
+        progress.setCompletedWeeks(request.completedWeeks());
+        return learningProgressRepository.save(progress);
+    }
+
     public record ScheduleRequest(String title, LocalDateTime dateTime, LocalDateTime endDateTime,
             int notifyMinutesBefore, String priority, String category) {
     }
@@ -344,6 +533,9 @@ public class DemoApplication {
     public record LineMessageRequest(String accessToken, String userId, String scheduleTitle) {}
     public record AuthRequest(String username, String password) {}
     public record AuthResponse(Long id, String username) {}
+    public record WeeklyReviewRequest(LocalDate reviewDate, String did, String trouble,
+            String previousTryResult, String reason, String nextTry, String whenToDo) {}
+    public record LearningProgressRequest(String completedWeeks) {}
 
     private Long currentUserId(HttpSession session) {
         Object userId = session.getAttribute("userId");
