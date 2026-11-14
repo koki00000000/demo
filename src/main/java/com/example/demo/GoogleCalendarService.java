@@ -15,11 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.RestClient;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,7 +25,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class GoogleCalendarService {
     private static final String SCOPE = "https://www.googleapis.com/auth/calendar.events";
     private static final ZoneId TOKYO = ZoneId.of("Asia/Tokyo");
-    private final RestClient restClient = RestClient.create();
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -103,7 +99,8 @@ public class GoogleCalendarService {
             String eventUrl = "https://www.googleapis.com/calendar/v3/calendars/primary/events/" + encode(eventId);
             try {
                 result = updateEvent(eventUrl, event, accessToken);
-            } catch (HttpClientErrorException.NotFound notFound) {
+            } catch (CalendarApiException exception) {
+                if (exception.statusCode() != 404) throw exception;
                 result = insertEvent(event, accessToken);
             }
         } else {
@@ -129,7 +126,8 @@ public class GoogleCalendarService {
         JsonNode result;
         try {
             result = insertEvent(event, accessToken);
-        } catch (HttpClientErrorException.Conflict conflict) {
+        } catch (CalendarApiException exception) {
+            if (exception.statusCode() != 409) throw exception;
             String eventUrl = "https://www.googleapis.com/calendar/v3/calendars/primary/events/" + encode(eventId);
             result = updateEvent(eventUrl, event, accessToken);
         }
@@ -137,16 +135,33 @@ public class GoogleCalendarService {
     }
 
     private JsonNode insertEvent(Map<String, Object> event, String accessToken) {
-        return restClient.post()
-                .uri("https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=none")
-                .header("Authorization", "Bearer " + accessToken)
-                .contentType(MediaType.APPLICATION_JSON).body(event).retrieve().body(JsonNode.class);
+        return sendEvent("POST", "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=none",
+                event, accessToken);
     }
 
     private JsonNode updateEvent(String eventUrl, Map<String, Object> event, String accessToken) {
-        return restClient.put().uri(eventUrl)
-                .header("Authorization", "Bearer " + accessToken)
-                .contentType(MediaType.APPLICATION_JSON).body(event).retrieve().body(JsonNode.class);
+        return sendEvent("PUT", eventUrl, event, accessToken);
+    }
+
+    private JsonNode sendEvent(String method, String url, Map<String, Object> event, String accessToken) {
+        try {
+            byte[] json = objectMapper.writeValueAsBytes(event);
+            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                    .header("Authorization", "Bearer " + accessToken)
+                    .header("Content-Type", "application/json; charset=utf-8")
+                    .method(method, HttpRequest.BodyPublishers.ofByteArray(json))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                throw new CalendarApiException(response.statusCode(), response.body());
+            }
+            return objectMapper.readTree(response.body());
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Googleカレンダーへの送信が中断されました。", exception);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Googleカレンダーへ接続できませんでした。", exception);
+        }
     }
 
     private String accessToken(String refreshToken) {
@@ -213,4 +228,17 @@ public class GoogleCalendarService {
     }
 
     public record SyncResult(String eventId, String htmlLink) {}
+
+    private static final class CalendarApiException extends RuntimeException {
+        private final int statusCode;
+
+        private CalendarApiException(int statusCode, String responseBody) {
+            super("Google Calendar API error (" + statusCode + "): " + responseBody);
+            this.statusCode = statusCode;
+        }
+
+        private int statusCode() {
+            return statusCode;
+        }
+    }
 }
