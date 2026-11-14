@@ -97,25 +97,17 @@ public class GoogleCalendarService {
     private SyncResult syncWithAccessToken(Schedule schedule, String accessToken) {
         String eventId = schedule.getGoogleCalendarEventId();
         boolean alreadySynced = eventId != null && !eventId.isBlank();
-        if (!alreadySynced) {
-            eventId = "ais" + schedule.getUserId() + "e" + schedule.getId();
-        }
-        Map<String, Object> event = eventBody(schedule, eventId);
-        String eventUrl = "https://www.googleapis.com/calendar/v3/calendars/primary/events/" + encode(eventId);
+        Map<String, Object> event = eventBody(schedule);
         JsonNode result;
         if (alreadySynced) {
+            String eventUrl = "https://www.googleapis.com/calendar/v3/calendars/primary/events/" + encode(eventId);
             try {
                 result = updateEvent(eventUrl, event, accessToken);
             } catch (HttpClientErrorException.NotFound notFound) {
                 result = insertEvent(event, accessToken);
             }
         } else {
-            try {
-                result = insertEvent(event, accessToken);
-            } catch (HttpClientErrorException.Conflict conflict) {
-                // 同じIDの予定がGoogle側に残っている場合は重複を作らず更新する。
-                result = updateEvent(eventUrl, event, accessToken);
-            }
+            result = insertEvent(event, accessToken);
         }
         return new SyncResult(result.path("id").asText(eventId), result.path("htmlLink").asText());
     }
@@ -195,7 +187,7 @@ public class GoogleCalendarService {
         }
     }
 
-    private Map<String, Object> eventBody(Schedule schedule, String eventId) {
+    private Map<String, Object> eventBody(Schedule schedule) {
         LocalDateTime start = schedule.getDateTime();
         LocalDateTime end = schedule.getEndDateTime();
         if (start == null) {
@@ -206,12 +198,9 @@ public class GoogleCalendarService {
             end = start.plusHours(1);
         }
         Map<String, Object> event = new LinkedHashMap<>();
-        event.put("id", eventId);
         event.put("summary", schedule.getTitle());
-        event.put("description", "AI予定秘書から同期（予定ID: " + schedule.getId() + "）");
-        event.put("start", Map.of("dateTime", start.atZone(TOKYO).toOffsetDateTime().toString(), "timeZone", "Asia/Tokyo"));
-        event.put("end", Map.of("dateTime", end.atZone(TOKYO).toOffsetDateTime().toString(), "timeZone", "Asia/Tokyo"));
-        event.put("reminders", Map.of("useDefault", true));
+        event.put("start", Map.of("dateTime", start.atZone(TOKYO).toOffsetDateTime().toString()));
+        event.put("end", Map.of("dateTime", end.atZone(TOKYO).toOffsetDateTime().toString()));
         return event;
     }
 

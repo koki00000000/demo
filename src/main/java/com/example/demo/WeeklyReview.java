@@ -2,11 +2,11 @@ package com.example.demo;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 
 @Entity
 public class WeeklyReview {
@@ -14,11 +14,11 @@ public class WeeklyReview {
     private Long id;
     private Long userId;
     private LocalDate reviewDate;
-    @Lob private String did;
-    @Lob private String trouble;
+    @Column(columnDefinition = "TEXT") private String did;
+    @Column(columnDefinition = "TEXT") private String trouble;
     private String previousTryResult;
-    @Lob private String reason;
-    @Lob private String nextTry;
+    @Column(columnDefinition = "TEXT") private String reason;
+    @Column(columnDefinition = "TEXT") private String nextTry;
     private String whenToDo;
     private LocalDateTime updatedAt;
 

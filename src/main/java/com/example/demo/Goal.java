@@ -3,10 +3,10 @@ package com.example.demo;
 import java.time.LocalDateTime;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.Column;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 
 @Entity
 public class Goal {
@@ -17,10 +17,10 @@ public class Goal {
 
     private String title;
 
-    @Lob
+    @Column(columnDefinition = "TEXT")
     private String requirements;
 
-    @Lob
+    @Column(columnDefinition = "TEXT")
     private String plan;
     private LocalDateTime createdAt;
     private boolean active;

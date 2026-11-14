@@ -1210,11 +1210,20 @@
       if(!googleCalendarConfigured) return explainGoogleCalendarState();
       window.location.href='/api/google-calendar/connect';
     }
+    async function googleCalendarError(response,fallback) {
+      const text=await response.text();
+      try {
+        const data=JSON.parse(text);
+        return data.message || data.error || fallback;
+      } catch (_) {
+        return text || fallback;
+      }
+    }
     async function syncGoogleCalendarEvent(id,button) {
       const original=button.textContent; button.disabled=true; button.textContent='送信中…';
       try {
         const response=await fetch(`/api/google-calendar/events/${id}/sync`,{method:'POST'});
-        if(!response.ok) throw new Error(await response.text());
+        if(!response.ok) throw new Error(await googleCalendarError(response,'Googleカレンダーへ送信できませんでした。'));
         const result=await response.json(); await loadEvents();
         setAssistantMessage(result.message); toggleAssistant(true);
       } catch (error) { alert(error.message || 'Googleカレンダーへ送信できませんでした。'); }
@@ -1225,7 +1234,7 @@
       const button=document.querySelector('#googleCalendarSyncAllButton'); button.disabled=true; button.textContent='送信中…';
       try {
         const response=await fetch('/api/google-calendar/sync-all',{method:'POST'});
-        if(!response.ok) throw new Error(await response.text());
+        if(!response.ok) throw new Error(await googleCalendarError(response,'Googleカレンダーへまとめて送信できませんでした。'));
         const result=await response.json(); await loadEvents();
         setAssistantMessage(result.message); toggleAssistant(true);
       } catch (error) { alert(error.message || 'Googleカレンダーへまとめて送信できませんでした。'); }
@@ -1236,7 +1245,7 @@
       const original=button.textContent; button.disabled=true; button.textContent='送信中…';
       try {
         const response=await fetch(`/api/google-calendar/todos/${id}/sync`,{method:'POST'});
-        if(!response.ok) throw new Error(await response.text());
+        if(!response.ok) throw new Error(await googleCalendarError(response,'TodoをGoogleカレンダーへ送信できませんでした。'));
         const result=await response.json(); setAssistantMessage(result.message); toggleAssistant(true);
       } catch (error) { alert(error.message || 'TodoをGoogleカレンダーへ送信できませんでした。'); }
       finally { button.disabled=false; button.textContent=original; }
@@ -1246,7 +1255,7 @@
       const button=document.querySelector('#googleCalendarSyncTodosButton'); button.disabled=true; button.textContent='送信中…';
       try {
         const response=await fetch('/api/google-calendar/todos/today/sync-all',{method:'POST'});
-        if(!response.ok) throw new Error(await response.text());
+        if(!response.ok) throw new Error(await googleCalendarError(response,'今日のTodoをGoogleカレンダーへ送信できませんでした。'));
         const result=await response.json(); setAssistantMessage(result.message); toggleAssistant(true);
       } catch (error) { alert(error.message || '今日のTodoをGoogleカレンダーへ送信できませんでした。'); }
       finally { button.disabled=false; button.textContent='今日のTodoをまとめて送る'; }
