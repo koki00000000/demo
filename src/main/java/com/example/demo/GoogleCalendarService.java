@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class GoogleCalendarService {
     private static final String SCOPE = "https://www.googleapis.com/auth/calendar.events";
     private static final ZoneId TOKYO = ZoneId.of("Asia/Tokyo");
+    private static final DateTimeFormatter GOOGLE_DATE_TIME =
+            DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ssXXX");
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -214,8 +217,10 @@ public class GoogleCalendarService {
         }
         Map<String, Object> event = new LinkedHashMap<>();
         event.put("summary", schedule.getTitle());
-        event.put("start", Map.of("dateTime", start.atZone(TOKYO).toOffsetDateTime().toString()));
-        event.put("end", Map.of("dateTime", end.atZone(TOKYO).toOffsetDateTime().toString()));
+        // Google Calendar expects an RFC 3339 timestamp including seconds.
+        // OffsetDateTime#toString omits ":00" when seconds are zero, which Google rejects with 400.
+        event.put("start", Map.of("dateTime", GOOGLE_DATE_TIME.format(start.atZone(TOKYO))));
+        event.put("end", Map.of("dateTime", GOOGLE_DATE_TIME.format(end.atZone(TOKYO))));
         return event;
     }
 
