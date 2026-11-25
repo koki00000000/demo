@@ -43,6 +43,9 @@ public class NotificationService {
     @Value("${gemini.api.key:}")
     private String apiKey;
 
+    @Value("${notifications.scheduled.enabled:false}")
+    private boolean scheduledNotificationsEnabled;
+
     public NotificationService(ScheduleRepository scheduleRepository,
             AiNotificationRepository notificationRepository) {
         this.scheduleRepository = scheduleRepository;
@@ -51,6 +54,9 @@ public class NotificationService {
 
     @Scheduled(fixedRate = 60_000)
     public void scheduledCheck() {
+        // A database query every minute prevents Neon's compute from scaling to zero.
+        // Browser reminders and the manual check endpoint continue to work when disabled.
+        if (!scheduledNotificationsEnabled) return;
         checkDueNotifications();
     }
 
